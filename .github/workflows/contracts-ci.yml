@@ -1,0 +1,50 @@
+name: Contracts CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build & Test Soroban Contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32v1-none
+
+      - name: Install Stellar CLI
+        run: |
+          curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify Stellar CLI installation
+        run: stellar --version
+
+      - name: Build all contracts
+        working-directory: contracts
+        run: stellar contract build
+
+      - name: Run all tests
+        working-directory: contracts
+        run: cargo test
+
+      - name: Verify test snapshots are up to date
+        working-directory: contracts
+        run: |
+          if ! git diff --exit-code -- '*/test_snapshots/'; then
+            echo "ERROR: Test snapshots are out of date."
+            echo "Run 'cargo test' locally and commit the regenerated snapshots."
+            exit 1
+          fi
