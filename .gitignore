@@ -1,0 +1,133 @@
+# ==============================================================================
+# ⛔ SECRETS & ENVIRONMENT VARIABLES (CRITICAL)
+# ==============================================================================
+# Entornos locales y producción (nunca subir claves)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.seed
+*.secret
+*.crt
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==============================================================================
+# 🦀 RUST & SOROBAN (STELLAR)
+# ==============================================================================
+# Artefactos de compilación de Rust
+target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Compilados de Soroban / Contratos
+*.wasm
+*.wasm.d
+.soroban/
+**/test_snapshots/
+**/.soroban/
+
+# Entorno de pruebas
+*.profraw
+*.profdata
+
+# ==============================================================================
+# 🟢 NODE.JS & FRONTEND (PREPARACIÓN PARA EL FUTURO)
+# ==============================================================================
+# Dependencias
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Frameworks (Next.js, Vite, React, Vue, etc.)
+.next/
+out/
+.nuxt/
+.vite/
+dist/
+build/
+.output/
+.svelte-kit/
+
+# Testing y Cobertura
+coverage/
+*.lcov
+.nyc_output/
+
+# ==============================================================================
+# 💻 IDE & EDITORES (INCLUYENDO HERRAMIENTAS DE IA)
+# ==============================================================================
+# VS Code (ignoramos todo excepto las configuraciones compartidas)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# IntelliJ / JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Editores basados en IA (Cursor, Windsurf, etc.)
+.cursor/
+.cursorrules
+.windsurf/
+.aider*
+.continue/
+.codeium/
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+Session.vim
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==============================================================================
+# 🐧 SISTEMAS OPERATIVOS (WSL2, WINDOWS, LINUX, MAC)
+# ==============================================================================
+# Linux / WSL2
+*~
+.directory
+.nfs*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.wslconfig
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ==============================================================================
+# 📝 LOGS & TEMPORALES
+# ==============================================================================
+*.log
+tmp/
+temp/
+*.tmp
