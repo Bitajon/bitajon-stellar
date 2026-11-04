@@ -1,5 +1,9 @@
 # Thriving Stellar 🌱
 
+[![Contracts CI](https://github.com/ThrivingHub/thriving-stellar/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/ThrivingHub/thriving-stellar/actions/workflows/contracts-ci.yml)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 Implementación de la visión de **ThrivingHub** para el ecosistema de **Stellar** y **Soroban**. Este repositorio contiene la infraestructura descentralizada para permitir a fundaciones y ONG's recaudar donaciones con trazabilidad absoluta y validación de impacto real.
 
 ## 💡 El Modelo de Confianza (Hipótesis de Trabajo)
@@ -40,13 +44,25 @@ Este es un **monorepo**, lo que significa que convivirán diferentes tecnología
 
 ### 📦 Contracts (Rust + Soroban)
 La lógica de negocio (Escrow, Validación, Registro) vive aquí. Estamos utilizando **Rust** y el **Soroban SDK** para Stellar.
-*   **Prerrequisitos:** Rust (última versión estable), `wasm32-unknown-unknown` target, y Soroban CLI.
-*   **Comandos básicos** (se detallarán cuando se inicialice el workspace):
-    *   `cargo build`
+*   **Prerrequisitos:** Rust `1.84+` (estable), target `wasm32v1-none`, y Stellar CLI `30.0.1`.
+*   **Comandos básicos** (detalle completo en [`contracts/README.md`](./contracts/README.md)):
+    *   `stellar contract build`
     *   `cargo test`
 
 ### 💻 Frontend (Por definir)
 La interfaz de usuario (UI/UX) está inspirada en plataformas como *Vaki* (enfoque en "hacer florecer la confianza"). El stack tecnológico (Next.js, Vite, etc.) será definido por el equipo de frontend.
+
+---
+
+## 🔄 CI/CD
+
+Cada push o Pull Request a `main` dispara el workflow [**Contracts CI**](./.github/workflows/contracts-ci.yml), que verifica:
+
+1.  ✅ Compilación exitosa de todos los contratos (`stellar contract build`).
+2.  ✅ Ejecución de la suite de tests (`cargo test`).
+3.  ✅ Sincronización de snapshots de pruebas (`git diff --exit-code -- '*/test_snapshots/'`).
+
+Puedes ver el estado en tiempo real en la pestaña [**Actions**](https://github.com/ThrivingHub/thriving-stellar/actions) del repositorio, o en el badge al inicio de este documento.
 
 ---
 
