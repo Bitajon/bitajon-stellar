@@ -1,0 +1,17 @@
+[package]
+name = "nonprofit-registry"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+soroban-sdk.workspace = true
+thriving-types.workspace = true
+thriving-interfaces.workspace = true
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
