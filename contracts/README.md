@@ -29,7 +29,7 @@ Para garantizar la reproducibilidad y compatibilidad con el runtime de Soroban d
 | **Rust** | `1.84+` (estable) | El compilador debe soportar el target `wasm32v1-none`. |
 | **Target Wasm** | `wasm32v1-none` | Único target soportado por Soroban. **No** usar `wasm32-unknown-unknown`. |
 | **Soroban SDK** | `29.0.1` | Incluye parches para CVE-2026-32322 y CVE-2026-24889. |
-| **Stellar CLI** | `30.0.1` | Requerida por el SDK 29.0.1. Incluye `stellar contract build`. |
+| **Stellar CLI** | `30.0.1` | Requerida por el SDK 29.0.1. Incluye `stellar contract build` y `stellar contract deploy`. |
 | **Protocolo de Red** | `30 (Bell)` | Testnet y Mainnet alineados (Noviembre 2026). |
 
 ### 🛠️ Instalación del Entorno
@@ -85,7 +85,10 @@ contracts/
 │   ├── tests/integration.rs
 │   ├── test_snapshots/{test/*.json, *.json}
 │   └── Cargo.toml
-├── docs/known-limitations.md     # Limitaciones conocidas del MVP
+├── docs/
+│   ├── known-limitations.md      # Limitaciones conocidas del MVP
+│   ├── frontend-guide.md         # Guía exhaustiva para el equipo de frontend
+│   └── events-reference.md       # Referencia completa de eventos on-chain
 └── README.md                     # Este archivo
 ```
 
@@ -184,7 +187,7 @@ pub struct VaultState {
 - ✅ `deposit` rechaza campañas expiradas (`CampaignExpired`) y vaults finalizados (`VaultFinalized`).
 - ✅ Validación de `evidence_hash` no vacío (`InvalidEvidence`).
 - ✅ `extend_instance_ttl` en mutaciones y `extend_ttl` en lecturas.
-- ✅ **Bypass del router cerrado**: ver sección [§5](#-5-modelo-de-fee-y-bypass-del-router).
+- ✅ **Bypass del router cerrado**: ver sección [§6](#-6-modelo-de-fee-y-bypass-del-router).
 
 **Funciones exportadas**: `__constructor`, `create_vault`, `deposit`, `submit_evidence`, `release_final`, `get_vault`, `set_authorized_router`, `get_authorized_router`.
 
@@ -211,7 +214,77 @@ donor → router.donate(campaign_id, amount)
 
 ---
 
-## 💰 4. Modelo de Fee: Modelo B (Fee FROM DEPOSIT)
+## 🚀 4. Estado del Deploy (Testnet)
+
+**Fecha del despliegue**: Noviembre 2026
+**Red**: Stellar Testnet (Protocolo 30 - Bell)
+**Estado**: ✅ Desplegado y verificado on-chain
+**Fee de plataforma**: `0 bps` (0% — intencional para el demo)
+**Bypass del fee**: ✅ Cerrado (`authorized_router` activado)
+
+### 🔑 Cuenta de Despliegue y Administración
+
+| Rol | Identidad CLI | Dirección Stellar |
+| :--- | :--- | :--- |
+| **Deployer + Admin** | `deployer` | `GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5` |
+
+La clave secreta vive en `~/.config/stellar/identity/deployer.toml` y **nunca** debe commitearse. Para el MVP de Testnet es aceptable; para Mainnet se debe usar multi-sig o una smart account con Passkeys.
+
+### 📋 Contratos Desplegados
+
+| # | Contrato | Dirección (`C...`) | Propósito |
+| :--- | :--- | :--- | :--- |
+| 1 | **Nonprofit Registry** | `CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K` | Registro y aprobación de fundaciones. |
+| 2 | **Campaign Registry** | `CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR` | Metadatos de campañas. Valida contra el registro de nonprofits. |
+| 3 | **Campaign Vault** | `CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT` | Custodia de fondos y liberación por hitos (50/50). |
+| 4 | **Donation Router** | `CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD` | Punto de entrada único con fee de plataforma. |
+
+### 🔗 Transacciones de Despliegue (stellar.expert)
+
+| Contrato | Wasm Hash | Tx de Deploy |
+| :--- | :--- | :--- |
+| **Nonprofit Registry** | `7376fe65dd8fa0611a2742a3cf4941c6a7dcc9b4578ac97c0f1b90c82a0703af` | [`138523ea...b1c7989`](https://stellar.expert/explorer/testnet/tx/138523eaeee800b82d5fd7704c0f0687f344d52257d1aa51fb7042635b1c7989) |
+| **Campaign Registry** | `484493887c7b87e6be9436d9036a58142be1be6c13dac78ea0fd81b55b2e65e9` | [`b2bcc54a...680d8457`](https://stellar.expert/explorer/testnet/tx/b2bcc54a8527338842b1d922bcc0a9ff25ca60200279f0ac0b0b17b4680d8457) |
+| **Campaign Vault** | `6ce4ac4e3c76a77f70e5c21b3550c1c5519505fca43b80e0739fbc13f68904d5` | [`b93a1906...036e2a`](https://stellar.expert/explorer/testnet/tx/b93a1906651782b0f242d9ccd97f97bcf1a5a701f7ca634e6e2a156aff036e2a) |
+| **Donation Router** | `bbcc1dbd99e15112dffc1f66ee49e7ad3f19fb60ad4feb934ae1724d5d24c356` | [`9ff27e27...d90d46dd`](https://stellar.expert/explorer/testnet/tx/9ff27e271e31fd7c201c9de79821221c5de85f99c59522c48442c7a9d90d46dd) |
+
+### 💾 Configuración Local Persistida
+
+El archivo `.env.testnet` en la raíz del monorepo (ignorado por git) contiene las 4 direcciones:
+
+```bash
+NP_ID=CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K
+CR_ID=CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR
+CV_ID=CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT
+DR_ID=CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD
+```
+
+---
+
+## 🛡️ 5. Activación del `authorized_router`
+
+Tras el deploy, el `campaign-vault` arranca en **modo abierto** (`authorized_router = None`). Se activó el modo cerrado configurando el `donation-router` como único invocador autorizado de `deposit`:
+
+```bash
+stellar contract invoke \
+  --id CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT \
+  --source deployer --network testnet \
+  -- set_authorized_router \
+  --admin deployer \
+  --router '"CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD"'
+```
+
+| Parámetro | Valor |
+| :--- | :--- |
+| **Tx de activación** | [`c40d5a1c...80e392`](https://stellar.expert/explorer/testnet/tx/c40d5a1cdace3276164bff65119b90b14482d830af2255369781ff926980e392) |
+| **Evento emitido** | `AuthorizedRouterUpdated { authorized_router: Some("CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD") }` |
+| **Verificación** | `stellar contract invoke --id $CV_ID -- get_authorized_router` → devuelve `"CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD"` |
+
+> 📌 **Nota técnica sobre `Option<Address>` en el CLI 30.0.1**: la sintaxis requiere comillas simples envolviendo la dirección con comillas dobles (`--router '"C..."'`). Pasar la dirección desnuda (`--router C...`) falla con `Invalid JSON in argument 'router'` porque el CLI intenta parsear el `Option` como JSON. Documentado para futuras automatizaciones.
+
+---
+
+## 💰 6. Modelo de Fee: Modelo B (Fee FROM DEPOSIT)
 
 El `donation-router` aplica un fee configurable en **basis points** (`fee_bps`), con un **cap duro de 10%** (`MAX_FEE_BPS = 1000`).
 
@@ -261,7 +334,7 @@ Los contratos **intencionalmente no hacen este cálculo**: es una preocupación 
 
 ---
 
-## 🔒 5. Modelo de Fee y Bypass del Router
+## 🔒 7. Bypass del Router (Cerrado)
 
 ### El problema del bypass
 
@@ -317,9 +390,9 @@ Antes de habilitar el cobro de fee en producción:
 
 ---
 
-## 🧪 6. Estrategia de Pruebas
+## 🧪 8. Estrategia de Pruebas
 
-### 6.1. Estructura de Tests
+### 8.1. Estructura de Tests
 
 La suite de pruebas se divide en tres capas:
 
@@ -329,7 +402,7 @@ La suite de pruebas se divide en tres capas:
 | **Integration Tests** | `tests/integration.rs` | Valida el flujo completo entre contratos. Despliegan todos los contratos y verifican cross-contract calls. |
 | **Differential Tests** | `test_snapshots/` | Detectan cambios no intencionados en el estado del ledger o los eventos emitidos. |
 
-### 6.2. Cobertura Actual
+### 8.2. Cobertura Actual
 
 | Contrato | Unit | Integration | Total |
 | :--- | :--- | :--- | :--- |
@@ -350,13 +423,13 @@ La suite de pruebas se divide en tres capas:
 - ✅ Propagación de errores del vault a través del router.
 - ✅ Fee update afecta donaciones subsecuentes.
 
-### 6.3. Limitación Conocida: `mock_all_auths`
+### 8.3. Limitación Conocida: `mock_all_auths`
 
 Los tests usan `env.mock_all_auths()` en la mayoría de los casos, lo que hace que **cualquier** `require_auth()` pase sin verificar firmas. Esto es aceptable para tests funcionales, pero **el test del bypass sí usa `env.mock_auths`** con autorización específica del donor (sin el router), reproduciendo fielmente el escenario de ataque.
 
 **Mejora futura**: migrar el resto de tests a `mock_auths` específicos para verificar `require_auth` en cada mutación.
 
-### 6.4. Snapshots de Pruebas (Differential Testing)
+### 8.4. Snapshots de Pruebas (Differential Testing)
 
 El SDK de Soroban genera automáticamente archivos JSON en `test_snapshots/` al finalizar cada prueba. Estos archivos capturan **todo el estado del ledger** (storage + eventos + árbol de autenticación) después de la ejecución.
 
@@ -372,7 +445,7 @@ Si el comando devuelve `exit 0` y sin output, los snapshots están al día. Si f
 
 ---
 
-## ⚙️ 7. Comandos de Desarrollo
+## ⚙️ 9. Comandos de Desarrollo
 
 ### Compilación
 
@@ -415,7 +488,7 @@ cargo test 2>&1 | grep -i warning && echo "⚠️ Warnings" || echo "✅ No warn
 
 ---
 
-## 🔄 8. CI/CD
+## 🔄 10. CI/CD
 
 El workflow de GitHub Actions (`.github/workflows/contracts-ci.yml`) se ejecuta en cada push o PR a `main` y realiza las siguientes verificaciones:
 
@@ -428,38 +501,72 @@ Si el workflow falla por snapshots desactualizados, ejecuta localmente `cargo te
 
 ---
 
-## 🔗 9. Bindings para el Frontend
+## 🔗 11. Bindings para el Frontend
 
 Para que el equipo de frontend (React/Next.js) pueda interactuar con los contratos sin escribir el JSON-RPC manualmente, se generan **bindings tipados**.
 
-### Comando para TypeScript
+### Ubicación
+
+Los bindings ya están generados en [`../bindings/`](../bindings) (raíz del monorepo, fuera de `contracts/`):
+
+```text
+bindings/
+├── campaign-registry/      # Client tipado para campaign-registry
+├── campaign-vault/         # Client tipado para campaign-vault
+├── donation-router/        # Client tipado para donation-router
+└── nonprofit-registry/     # Client tipado para nonprofit-registry
+```
+
+Cada paquete expone una clase `Client` con métodos tipados.
+
+### Regeneración (si cambia un contrato)
 
 ```bash
-# Para cada contrato desplegable:
 stellar contract bindings typescript \
   --wasm target/wasm32v1-none/release/nonprofit_registry.wasm \
-  --output-dir bindings/nonprofit-registry-ts
+  --output-dir ../bindings/nonprofit-registry --overwrite
 
 stellar contract bindings typescript \
   --wasm target/wasm32v1-none/release/campaign_registry.wasm \
-  --output-dir bindings/campaign-registry-ts
+  --output-dir ../bindings/campaign-registry --overwrite
 
 stellar contract bindings typescript \
   --wasm target/wasm32v1-none/release/campaign_vault.wasm \
-  --output-dir bindings/campaign-vault-ts
+  --output-dir ../bindings/campaign-vault --overwrite
 
 stellar contract bindings typescript \
   --wasm target/wasm32v1-none/release/donation_router.wasm \
-  --output-dir bindings/donation-router-ts
+  --output-dir ../bindings/donation-router --overwrite
 ```
 
-Cada binding genera un paquete NPM que expone una clase `Client` con métodos tipados. El frontend solo necesita instanciar el cliente con la dirección del contrato (`C...`) y la red (Testnet), y llamar a los métodos como funciones JavaScript normales.
+> ⚠️ Los bindings generados por `stellar contract bindings typescript` están **deprecados** según el CLI 30. El reemplazo oficial es el `js-stellar-sdk`. Mientras el equipo de frontend evalúa la migración, los bindings actuales son funcionales y aceleran el desarrollo.
+
+### Uso desde el frontend
+
+```typescript
+import { Client as VaultClient } from '@thriving/campaign-vault';
+
+const vault = new VaultClient({
+  contractId: 'CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+});
+
+const state = await vault.get_vault({ campaign_id: 1n });
+```
 
 **La seguridad de tipos se mantiene de extremo a extremo**: si un método cambia su firma en Rust, el binding falla al compilar en TypeScript, no en runtime.
 
+### Documentación para el Frontend
+
+Para el detalle exhaustivo de flujos, eventos, manejo de errores, y UX recomendado, consulta:
+
+- [`docs/frontend-guide.md`](./docs/frontend-guide.md) — Guía completa de integración.
+- [`docs/events-reference.md`](./docs/events-reference.md) — Referencia on-chain de todos los eventos emitidos.
+
 ---
 
-## 🗺️ 10. Roadmap de Implementación
+## 🗺️ 12. Roadmap de Implementación
 
 | Fase | Entregable | Estado |
 | :--- | :--- | :--- |
@@ -468,14 +575,14 @@ Cada binding genera un paquete NPM que expone una clase `Client` con métodos ti
 | **Fase 2** | Contrato `campaign-registry` + 5 unit + 7 integration tests | ✅ Completado |
 | **Fase 3** | Contrato `campaign-vault` + 26 tests (incluye bypass) | ✅ Completado |
 | **Fase 4** | Contrato `donation-router` + 24 tests (fee + bypass) | ✅ Completado |
-| **Fase 5** | Bindings TypeScript + Deploy a Testnet | ⏳ Pendiente |
+| **Fase 5** | Bindings TypeScript + Deploy a Testnet + `authorized_router` activado | ✅ Completado |
 | **Fase 6** | Integración con on-ramps (VANK/Pollar) en Testnet | ⏳ Futuro |
 | **Fase 7** | Gobernanza híbrida (auditor + votación ponderada) | ⏳ Futuro |
 | **Fase 8** | Deploy a Mainnet (con `authorized_router` configurado) | ⏳ Futuro |
 
 ---
 
-## 🚧 11. Limitaciones Conocidas del MVP
+## 🚧 13. Limitaciones Conocidas del MVP
 
 Consulta [`docs/known-limitations.md`](./docs/known-limitations.md) para el detalle completo. Resumen:
 
@@ -489,7 +596,7 @@ Consulta [`docs/known-limitations.md`](./docs/known-limitations.md) para el deta
 
 ---
 
-## 📚 12. Referencias
+## 📚 14. Referencias
 
 - [Stellar Docs — Build](https://developers.stellar.org/docs/build)
 - [Stellar Docs — Authorization](https://developers.stellar.org/docs/learn/fundamentals/contract-development/authorization)
