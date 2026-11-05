@@ -5,6 +5,8 @@ members = [
     "thriving-interfaces",
     "nonprofit-registry",
     "campaign-registry",
+    "campaign-vault",
+    "donation-router",
 ]
 
 [workspace.package]

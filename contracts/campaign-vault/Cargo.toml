@@ -1,0 +1,19 @@
+[package]
+name = "campaign-vault"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+soroban-sdk.workspace = true
+thriving-types.workspace = true
+thriving-interfaces.workspace = true
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+campaign-registry = { path = "../campaign-registry" }
+nonprofit-registry = { path = "../nonprofit-registry" }
