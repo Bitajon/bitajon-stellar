@@ -52,38 +52,76 @@ pub struct Campaign {
     pub status: CampaignStatus,
 }
 
+/// Defines the custody and release state for a specific campaign's funds.
+///
+/// Immutable fields (`target_amount`, `deadline`, `token_address`) are cached
+/// at vault creation to avoid repeated cross-contract calls on the hot path
+/// (`deposit`).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VaultState {
+    pub campaign_id: u64,
+    pub nonprofit: Address,
+    pub token_address: Address,
+    pub target_amount: i128,
+    pub deadline: u64,
+    pub total_deposited: i128,
+    pub initial_release_done: bool,
+    pub evidence_hash: Option<Bytes>,
+    pub final_release_done: bool,
+}
+
 /// Defines the shared error codes used across all smart contracts in the workspace.
+///
+/// Error codes **must not be renumbered**: external consumers (frontend, indexers,
+/// monitoring, audit reports) rely on stable discriminants. Gaps in the sequence
+/// indicate reserved codes. New codes MUST be appended at the end.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Error {
-    /// The caller is not authorized to perform the operation.
+    // --- Authorization & Identity (1-4) ---
     Unauthorized = 1,
-    /// The requested nonprofit profile does not exist.
     NonprofitNotFound = 2,
-    /// The nonprofit is not in an approved state.
     NonprofitNotApproved = 3,
-    /// The nonprofit is already registered in the system.
     NonprofitAlreadyRegistered = 4,
-    /// The campaign does not exist.
+
+    // --- Campaign Lifecycle (5-6, 8) ---
     CampaignNotFound = 5,
-    /// The campaign is not active.
     CampaignNotActive = 6,
-    /// The target amount has not been reached.
-    TargetNotReached = 7,
-    /// Evidence has not been submitted for the milestone.
+    // 7: reserved
     EvidenceNotSubmitted = 8,
-    /// The requested release has already been executed.
-    AlreadyReleased = 9,
-    /// Insufficient funds for the operation.
-    InsufficientFunds = 10,
-    /// The target amount must be strictly greater than zero.
+    // 9: reserved
+    // 10: reserved
+
+    // --- Input Validation (11-13) ---
     InvalidAmount = 11,
-    /// The deadline must be a timestamp in the future.
     InvalidDeadline = 12,
-    /// The milestone percentage must be between 1 and 100.
     InvalidMilestonePercentage = 13,
+    // 14: reserved
+
+    // --- Vault Release State (16, 18) ---
+    // 15: reserved
+    FinalAlreadyReleased = 16,
+    // 17: reserved
+    NotVaultAdmin = 18,
+
+    // --- Vault-Specific (19-26) ---
+    DepositExceedsTarget = 19,
+    CampaignAlreadyExists = 20,
+    InitialReleaseNotDone = 21,
+    CampaignExpired = 22,
+    VaultFinalized = 23,
+    InvalidEvidence = 24,
+    InvalidFeeBps = 25,
+    /// The vault is configured with an `authorized_router` and the immediate
+    /// caller is not that router. Direct deposits are rejected.
+    NotAuthorizedRouter = 26,
 }
 
 /// The default percentage of funds released immediately upon reaching the target amount.
 pub const DEFAULT_MILESTONE_PERCENTAGE: u32 = 50;
+
+/// Maximum allowed fee in basis points (1000 bps = 10%).
+/// Hard cap to prevent governance abuse.
+pub const MAX_FEE_BPS: u32 = 1000;
