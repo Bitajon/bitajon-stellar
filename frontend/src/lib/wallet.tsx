@@ -1,9 +1,11 @@
+import { Buffer } from "buffer";
 import {
   getAddress,
   getNetworkDetails,
   isAllowed,
   isConnected,
   requestAccess,
+  signMessage as freighterSignMessage,
   signTransaction as freighterSign,
 } from "@stellar/freighter-api";
 import type { SignTransaction } from "@stellar/stellar-sdk/contract";
@@ -25,6 +27,8 @@ type WalletState = {
   disconnect: () => void;
   /** Firmador compatible con los clientes de contrato del SDK. */
   signTransaction: SignTransaction;
+  /** Firma un mensaje de texto (SEP-53) y devuelve la firma en base64. */
+  signMessage: (message: string) => Promise<string>;
 };
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -131,6 +135,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [address],
   );
 
+  const signMessage = useCallback(
+    async (message: string) => {
+      const res = await freighterSignMessage(message, { networkPassphrase: NETWORK_PASSPHRASE, address: address ?? undefined });
+      if (res.error) throw new Error(errorMessage(res.error) || "La wallet rechazó la firma.");
+      const sig = res.signedMessage as unknown;
+      if (!sig) throw new Error("La wallet no devolvió la firma.");
+      if (typeof sig === "string") return sig;
+      // Versiones anteriores devuelven un Buffer.
+      return Buffer.from(sig as Uint8Array).toString("base64");
+    },
+    [address],
+  );
+
   const value = useMemo<WalletState>(
     () => ({
       address,
@@ -141,8 +158,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       signTransaction,
+      signMessage,
     }),
-    [address, installed, wrongNetwork, connecting, connect, disconnect, signTransaction],
+    [address, installed, wrongNetwork, connecting, connect, disconnect, signTransaction, signMessage],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

@@ -20,7 +20,11 @@ const FAQ = [
   },
   {
     q: "¿Dónde quedan las fotos y facturas?",
-    a: "La fundación las conserva. En la red se publica su huella digital (hash SHA-256): si alguien cambia el archivo, la huella deja de coincidir. En cada campaña puedes comprobar un archivo contra la huella publicada.",
+    a: "Quedan publicadas en la campaña para que cualquiera las vea. Además, su huella digital (SHA-256) se registra en Stellar: tu navegador recalcula la huella de cada archivo y la compara con la de la red, así que si alguien cambia una foto o una factura, la página lo muestra.",
+  },
+  {
+    q: "¿Quién ve el RUT de la fundación?",
+    a: "Solo el administrador de BITAJÓN, para aprobar la fundación. El archivo se guarda en un espacio privado y en la red solo queda su huella, para comprobar que no se cambió.",
   },
   {
     q: "¿Qué pasa si la campaña no llega a la meta?",

@@ -2,7 +2,7 @@
 
 Interfaz web de BITAJÓN (Thriving Stellar): campañas de fundaciones con donaciones en custodia y liberación por hitos sobre los 4 contratos de `../contracts`, en Stellar Testnet.
 
-**Stack:** Vite 8 + React 19 + TypeScript + Tailwind CSS 4, `@stellar/stellar-sdk` 17, `@stellar/freighter-api` 6, TanStack Query y React Router.
+**Stack:** Vite 8 + React 19 + TypeScript + Tailwind CSS 4, `@stellar/stellar-sdk` 17, `@stellar/freighter-api` 6 (wallet Varial, antes Freighter), Supabase (imágenes, redes, evidencia y RUT), TanStack Query y React Router.
 
 ## Pantallas
 
@@ -69,3 +69,20 @@ npm run seed:demo    # vuelve a desplegar y cargar todo desde cero (crea cuentas
 - Publicado en: https://bitajon-demo.vercel.app
 - `scripts/.demo-state.json` guarda las cuentas de prueba con sus llaves secretas de **testnet**. Está en `.gitignore`: no se sube.
 - `demo-evidencia/` tiene los archivos cuya huella está registrada en las campañas 3 y 4, para probar «Comprobar un archivo de evidencia».
+
+## Imágenes, redes sociales, evidencia y RUT (Supabase)
+
+Los contratos solo guardan datos esenciales y huellas. Lo demás vive en Supabase (proyecto `mina-sin-fondo`, todo con prefijo `bitajon_`):
+
+| Qué | Dónde | Quién lo ve | Quién lo escribe |
+| --- | --- | --- | --- |
+| Portada y galería de cada campaña | bucket público `bitajon-media` + tabla `bitajon_campaign_meta` | Todos | Solo la fundación dueña de la campaña (se comprueba on-chain) |
+| Logo, descripción y redes de la fundación | `bitajon-media` + `bitajon_nonprofit_meta` | Todos | Solo esa fundación |
+| Evidencia (fotos y PDF) + manifiesto | bucket público `bitajon-evidence` + `bitajon_evidence` | Todos | Solo la fundación dueña |
+| RUT | bucket **privado** `bitajon-rut` + `bitajon_nonprofit_private` | **Solo el admin** (URL firmada de 10 min) | Solo esa fundación |
+
+- **Cómo se autoriza:** la página pide a la wallet firmar un mensaje (SEP-53) una vez cada ~25 min. La Edge Function `supabase/functions/bitajon` verifica la firma (Ed25519), revisa en el contrato quién es dueño de la campaña o quién es el admin, y solo entonces entrega URLs de subida firmadas. Con la llave pública (anon) solo se puede leer.
+- **Evidencia verificable:** se arma un manifiesto JSON con la huella SHA-256 de cada archivo; la huella del manifiesto es la que se registra con `submit_evidence`. El navegador del donante recalcula las huellas y muestra «Evidencia verificada».
+- **RUT:** su huella queda en el contrato (`rut_hash`) al registrarse; el admin ve si el archivo guardado coincide.
+- **Despliegues permitidos y admin por despliegue:** constante `CONFIGS` en la Edge Function. Si se redespliegan los contratos, hay que agregarlos ahí.
+- SQL: `supabase/migrations/20261106000000_bitajon_offchain.sql`. Contenido de demo: `npm run seed:media`.

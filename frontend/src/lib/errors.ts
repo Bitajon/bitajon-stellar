@@ -41,13 +41,14 @@ function errorText(err: unknown): string {
 
 /** Convierte cualquier error (contrato, Freighter, red) en un mensaje para el usuario. */
 export function friendlyError(err: unknown): string {
+  if (err instanceof Error && err.name === "BitajonError") return err.message;
   const code = contractErrorCode(err);
   if (code !== null) return CONTRACT_ERRORS[code] ?? `El contrato rechazó la operación (código ${code}).`;
 
   const text = errorText(err);
   const lower = text.toLowerCase();
   if (lower.includes("user declined") || lower.includes("rejected") || lower.includes("denied"))
-    return "Cancelaste la firma en Freighter.";
+    return "Cancelaste la firma en tu wallet.";
   if (lower.includes("error(auth")) return "La firma no autoriza esta operación.";
   if (lower.includes("account not found") || lower.includes("404"))
     return "Tu cuenta aún no existe en la red. Usa el botón para obtener XLM de prueba.";

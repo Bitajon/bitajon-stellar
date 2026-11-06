@@ -51,3 +51,12 @@ export const TOKEN_DECIMALS = Number(pick(env.VITE_TOKEN_DECIMALS, "7"));
 
 /** Porcentaje que se libera al llegar a la meta (DEFAULT_MILESTONE_PERCENTAGE en los contratos). */
 export const MILESTONE_PERCENTAGE = 50;
+
+/* Supabase: imágenes, redes sociales, evidencia y RUT (fuera de la cadena). */
+export const SUPABASE_URL = pick(env.VITE_SUPABASE_URL, "https://vfvsdztgkndeundarbzw.supabase.co");
+/** Llave pública (anon): solo permite leer; las escrituras pasan por la Edge Function. */
+export const SUPABASE_ANON_KEY = pick(
+  env.VITE_SUPABASE_ANON_KEY,
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdnNkenRna25kZXVuZGFyYnp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNzQ5MDMsImV4cCI6MjEwNzk1MDkwM30.Ac0MK2siEP4-jkNEIu6sF5up6usWeAg1izgxfqxLy78",
+);
+export const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/bitajon`;

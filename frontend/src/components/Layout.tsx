@@ -41,7 +41,7 @@ export function Layout() {
       )}
       {wrongNetwork && (
         <div className="flex items-center justify-center gap-2 bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-900">
-          <AlertTriangle className="h-4 w-4 shrink-0" /> Freighter está en otra red. Cámbiala a Testnet para firmar.
+          <AlertTriangle className="h-4 w-4 shrink-0" /> Tu wallet está en otra red. Cámbiala a Testnet para firmar.
         </div>
       )}
 

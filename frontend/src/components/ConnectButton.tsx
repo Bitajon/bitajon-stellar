@@ -28,7 +28,7 @@ export function ConnectButton({ full = false }: { full?: boolean }) {
   if (installed === false && !address) {
     return (
       <a href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer" className={`btn-outline ${full ? "w-full" : ""}`}>
-        <Wallet className="h-4 w-4" /> Instalar Freighter
+        <Wallet className="h-4 w-4" /> Instalar Varial
       </a>
     );
   }

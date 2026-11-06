@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { CONTRACTS } from "../config";
 import { asBigInt, asString, fetchEvents, isEvent, type ChainEvent } from "../lib/events";
 import { getNativeBalance } from "../lib/horizon";
+import { getEvidenceRecords, getNonprofitMeta, listCampaignMeta } from "../lib/offchain";
 import { getCampaignView, getFeeBps, getProfile, listCampaigns, quote } from "../lib/stellar";
 
 export const qk = {
@@ -13,7 +14,35 @@ export const qk = {
   quote: (gross: string) => ["quote", gross] as const,
   events: ["events"] as const,
   balance: (addr: string) => ["balance", addr] as const,
+  campaignMeta: ["campaign-meta"] as const,
+  nonprofitMeta: (addr: string) => ["nonprofit-meta", addr] as const,
+  evidence: (id: string) => ["evidence", id] as const,
 };
+
+/* ---------- Fuera de la cadena (Supabase) ---------- */
+
+/** Portadas y galerías de todas las campañas. Si Supabase falla, la app sigue con las portadas generadas. */
+export function useCampaignMetaMap() {
+  return useQuery({ queryKey: qk.campaignMeta, queryFn: listCampaignMeta, staleTime: 30_000, retry: 1 });
+}
+
+export function useNonprofitMeta(address: string | null | undefined) {
+  return useQuery({
+    queryKey: qk.nonprofitMeta(address ?? ""),
+    queryFn: () => getNonprofitMeta(address as string),
+    enabled: Boolean(address),
+    staleTime: 30_000,
+  });
+}
+
+export function useEvidenceRecords(id: bigint | null, enabled = true) {
+  return useQuery({
+    queryKey: qk.evidence(String(id)),
+    queryFn: () => getEvidenceRecords(id as bigint),
+    enabled: enabled && id !== null,
+    staleTime: 30_000,
+  });
+}
 
 export function useCampaigns() {
   return useQuery({ queryKey: qk.campaigns, queryFn: () => listCampaigns(), staleTime: 15_000 });
@@ -152,6 +181,9 @@ export function useRefreshAll() {
         qc.invalidateQueries({ queryKey: qk.events }),
         qc.invalidateQueries({ queryKey: ["profile"] }),
         qc.invalidateQueries({ queryKey: ["balance"] }),
+        qc.invalidateQueries({ queryKey: qk.campaignMeta }),
+        qc.invalidateQueries({ queryKey: ["nonprofit-meta"] }),
+        qc.invalidateQueries({ queryKey: ["evidence"] }),
       ];
       if (campaignId !== undefined) tasks.push(qc.invalidateQueries({ queryKey: qk.campaign(String(campaignId)) }));
       await Promise.all(tasks);

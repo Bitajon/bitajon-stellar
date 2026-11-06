@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_TOKEN_ADDRESS?: string;
   readonly VITE_TOKEN_SYMBOL?: string;
   readonly VITE_TOKEN_DECIMALS?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
 }
 
 interface ImportMeta {

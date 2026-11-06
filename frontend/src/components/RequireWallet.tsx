@@ -19,9 +19,9 @@ export function RequireWallet({ children, title, text }: { children: ReactNode; 
       <p className="mt-4 text-xs text-slate-500">
         Usamos{" "}
         <a className="font-semibold text-brand-700 hover:underline" href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer">
-          Freighter
-        </a>
-        , la wallet de Stellar para el navegador. Recuerda ponerla en la red Testnet.
+          Varial
+        </a>{" "}
+        (antes Freighter), la wallet de Stellar para el navegador. Recuerda ponerla en la red Testnet.
       </p>
     </div>
   );

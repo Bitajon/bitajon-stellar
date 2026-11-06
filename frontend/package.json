@@ -15,11 +15,13 @@
     "sync:bindings": "node scripts/sync-bindings.mjs",
     "dev:demo": "vite --mode demo",
     "build:demo": "tsc --noEmit && vite build --mode demo",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "seed:media": "node scripts/seed-media.mjs"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^17.4.0",
+    "@supabase/supabase-js": "^2.119.0",
     "@tanstack/react-query": "^5.106.1",
     "buffer": "^6.0.3",
     "lucide-react": "^1.69.0",

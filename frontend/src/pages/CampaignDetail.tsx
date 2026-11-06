@@ -3,11 +3,14 @@ import { ArrowLeft, BadgeCheck, CalendarClock, MapPin, Settings2, Users } from "
 import { Link, useParams } from "react-router-dom";
 import { CampaignCover } from "../components/CampaignCover";
 import { DonateCard } from "../components/DonateCard";
-import { EvidenceVerifier } from "../components/EvidenceVerifier";
+import { EvidencePanel } from "../components/EvidencePanel";
+import { Gallery } from "../components/Gallery";
+import { NonprofitCard } from "../components/Nonprofit";
 import { MilestoneTrack } from "../components/MilestoneTrack";
 import { AddressLink, EmptyState, ErrorBox, ProgressBar, Spinner, StageBadge, TxLink } from "../components/ui";
 import { CONTRACTS } from "../config";
-import { donationsFrom, milestonesFrom, useCampaign, useEvents, useProfile } from "../hooks/queries";
+import { donationsFrom, milestonesFrom, useCampaign, useCampaignMetaMap, useEvents, useNonprofitMeta, useProfile } from "../hooks/queries";
+import { BUCKETS, publicUrl } from "../lib/offchain";
 import { formatDate, formatToken, percent, relativeTime, shortAddress, timeLeftLabel } from "../lib/format";
 import { STAGE_INFO, raised, stageOf } from "../lib/status";
 import { useWallet } from "../lib/wallet";
@@ -23,6 +26,8 @@ export function CampaignDetail() {
   const { address } = useWallet();
   const view = q.data;
   const profile = useProfile(view?.campaign.nonprofit);
+  const nonprofitMeta = useNonprofitMeta(view?.campaign.nonprofit);
+  const metaMap = useCampaignMetaMap();
 
   if (id === null) return <NotFoundCampaign />;
   if (q.isLoading)
@@ -48,6 +53,9 @@ export function CampaignDetail() {
   const milestones = milestonesFrom(events.data, view.id);
   const isOwner = address === campaign.nonprofit;
   const approved = profile.data?.status.tag === "Approved";
+  const media = metaMap.data?.get(view.id.toString());
+  const coverUrl = publicUrl(BUCKETS.media, media?.cover_path);
+  const galleryUrls = (media?.gallery ?? []).map((p) => publicUrl(BUCKETS.media, p)!).filter(Boolean);
 
   return (
     <div className="pb-10">
@@ -60,7 +68,7 @@ export function CampaignDetail() {
       <div className="container-page mt-5 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0">
           <div className="overflow-hidden rounded-[2rem]">
-            <CampaignCover name={campaign.name} description={campaign.description} className="h-56 sm:h-72" big />
+            <CampaignCover name={campaign.name} description={campaign.description} imageUrl={coverUrl} className="h-56 sm:h-80" big />
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -71,7 +79,7 @@ export function CampaignDetail() {
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
             <span className="inline-flex items-center gap-1.5 font-semibold text-brand-800">
               {approved && <BadgeCheck className="h-4 w-4 text-leaf-600" />}
-              {profile.data?.legal_name ?? shortAddress(campaign.nonprofit)}
+              {nonprofitMeta.data?.display_name || profile.data?.legal_name || shortAddress(campaign.nonprofit)}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> {campaign.location || "Colombia"}
@@ -92,6 +100,19 @@ export function CampaignDetail() {
             <p className="mt-3 leading-relaxed whitespace-pre-line text-slate-700">{campaign.description || "Sin descripción."}</p>
           </section>
 
+          {galleryUrls.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-xl font-semibold">Fotos de la causa</h2>
+              <div className="mt-4">
+                <Gallery urls={galleryUrls} title={campaign.name} />
+              </div>
+            </section>
+          )}
+
+          <div className="mt-8">
+            <NonprofitCard address={campaign.nonprofit} />
+          </div>
+
           <section className="card mt-8 p-6">
             <h2 className="text-xl font-semibold">Ruta de los fondos</h2>
             <p className="mt-1 text-sm text-slate-600">{STAGE_INFO[stage].hint}</p>
@@ -104,7 +125,7 @@ export function CampaignDetail() {
             <section className="card mt-8 p-6">
               <h2 className="text-xl font-semibold">Evidencia</h2>
               <div className="mt-4">
-                <EvidenceVerifier evidenceHash={vault.evidence_hash} />
+                <EvidencePanel campaignId={view.id} evidenceHash={vault.evidence_hash} />
               </div>
             </section>
           )}

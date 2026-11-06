@@ -1,7 +1,35 @@
+import { useState } from "react";
 import { coverFor } from "../lib/covers";
 
-export function CampaignCover({ name, description, className = "h-40", big = false }: { name: string; description?: string; className?: string; big?: boolean }) {
+/**
+ * Portada de campaña: la foto que subió la fundación, o una ilustración generada
+ * según el tema si todavía no hay foto.
+ */
+export function CampaignCover({
+  name,
+  description,
+  imageUrl,
+  className = "h-40",
+  big = false,
+}: {
+  name: string;
+  description?: string;
+  imageUrl?: string | null;
+  className?: string;
+  big?: boolean;
+}) {
   const { icon: Icon, from, to } = coverFor(name, description);
+  const [failed, setFailed] = useState(false);
+
+  if (imageUrl && !failed) {
+    return (
+      <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
+        <img src={imageUrl} alt={`Foto de la campaña ${name}`} className="h-full w-full object-cover" loading="lazy" onError={() => setFailed(true)} />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-brand-950/35 via-transparent to-transparent" />
+      </div>
+    );
+  }
+
   return (
     <div className={`relative overflow-hidden ${className}`} style={{ background: `linear-gradient(135deg, ${from}, ${to})` }} aria-hidden>
       {/* Curvas inspiradas en la cinta del logo */}
