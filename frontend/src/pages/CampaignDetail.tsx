@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, BadgeCheck, CalendarClock, MapPin, Settings2, Users } from "lucide-react";
+import { ArrowLeft, BadgeCheck, CalendarClock, ImageIcon, MapPin, Pencil, Settings2, Users } from "lucide-react";
+import { useState } from "react";
+import { MediaEditor, ProfileEditor } from "./Foundation";
 import { Link, useParams } from "react-router-dom";
 import { CampaignCover } from "../components/CampaignCover";
 import { DonateCard } from "../components/DonateCard";
@@ -23,7 +25,8 @@ export function CampaignDetail() {
   const id = parseId(useParams().id);
   const q = useCampaign(id);
   const events = useEvents();
-  const { address } = useWallet();
+  const { address, isAdmin } = useWallet();
+  const [editing, setEditing] = useState<null | "fotos" | "perfil">(null);
   const view = q.data;
   const profile = useProfile(view?.campaign.nonprofit);
   const nonprofitMeta = useNonprofitMeta(view?.campaign.nonprofit);
@@ -88,6 +91,26 @@ export function CampaignDetail() {
               <CalendarClock className="h-4 w-4" /> Cierra el {formatDate(campaign.deadline)}
             </span>
           </div>
+
+          {(isOwner || isAdmin) && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button type="button" className="btn-outline !py-2" onClick={() => setEditing(editing === "fotos" ? null : "fotos")}>
+                <ImageIcon className="h-4 w-4" /> Cambiar fotos
+              </button>
+              {profile.data && (
+                <button type="button" className="btn-outline !py-2" onClick={() => setEditing(editing === "perfil" ? null : "perfil")}>
+                  <Pencil className="h-4 w-4" /> Editar perfil de la fundación
+                </button>
+              )}
+              {isAdmin && !isOwner && <span className="self-center text-xs text-slate-500">Como admin puedes editar cualquier campaña y fundación.</span>}
+            </div>
+          )}
+          {editing === "fotos" && <MediaEditor campaignId={view.id} meta={media} onDone={() => setEditing(null)} />}
+          {editing === "perfil" && profile.data && (
+            <div className="mt-5">
+              <ProfileEditor profile={profile.data} meta={nonprofitMeta.data} target={campaign.nonprofit} onDone={() => setEditing(null)} />
+            </div>
+          )}
 
           {isOwner && (
             <Link to="/fundacion" className="mt-5 flex items-center gap-2 rounded-2xl bg-brand-50 p-4 text-sm font-semibold text-brand-800 ring-1 ring-brand-100 hover:bg-brand-100">
@@ -156,7 +179,7 @@ export function CampaignDetail() {
                 ))}
               </ul>
             )}
-            <p className="hint mt-4">El historial muestra los movimientos de los últimos días que guarda la red. El total recaudado siempre se lee del contrato.</p>
+            <p className="hint mt-4">El historial sale de los eventos de Stellar copiados en BITAJÓN. El total recaudado siempre se lee del contrato.</p>
           </section>
 
           <section className="mt-8 rounded-2xl bg-sand p-5 text-sm">

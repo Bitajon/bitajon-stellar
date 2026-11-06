@@ -224,7 +224,18 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v
 /* Perfil público (editar)                                              */
 /* ------------------------------------------------------------------ */
 
-function ProfileEditor({ profile, meta, onDone }: { profile: NonprofitProfile; meta: NonprofitMeta | null | undefined; onDone?: () => void }) {
+/** `target`: si lo usa el admin para editar otra fundación (sin la opción del RUT). */
+export function ProfileEditor({
+  profile,
+  meta,
+  onDone,
+  target,
+}: {
+  profile: NonprofitProfile;
+  meta: NonprofitMeta | null | undefined;
+  onDone?: () => void;
+  target?: string;
+}) {
   const { run, pending } = useTx();
   const [displayName, setDisplayName] = useState(meta?.display_name ?? profile.legal_name);
   const [description, setDescription] = useState(meta?.description ?? "");
@@ -258,7 +269,7 @@ function ProfileEditor({ profile, meta, onDone }: { profile: NonprofitProfile; m
       <div className="mt-5">
         <SocialFields value={socials} onChange={setSocials} />
       </div>
-      <div className="mt-5">
+      {!target && <div className="mt-5">
         <span className="label inline-flex items-center gap-1.5">
           Volver a subir el RUT (opcional) <Lock className="h-3.5 w-3.5 text-slate-400" />
         </span>
@@ -267,7 +278,7 @@ function ProfileEditor({ profile, meta, onDone }: { profile: NonprofitProfile; m
           <input type="file" accept="application/pdf,image/jpeg,image/png" className="sr-only" onChange={(e) => setRut(e.target.files?.[0] ?? null)} />
         </label>
         <p className="hint">Úsalo si el RUT no se subió en el registro. Debe ser el mismo archivo: el admin compara su huella con la registrada en la red.</p>
-      </div>
+      </div>}
       <button
         type="button"
         className="btn-primary mt-6"
@@ -276,7 +287,7 @@ function ProfileEditor({ profile, meta, onDone }: { profile: NonprofitProfile; m
           run(
             async (s) => {
               if (rut) await saveRut(s, rut);
-              await saveNonprofitProfile(s, { display_name: displayName, description, ...socials, logo, keepLogo: meta?.logo_path ?? null });
+              await saveNonprofitProfile(s, { display_name: displayName, description, ...socials, logo, keepLogo: meta?.logo_path ?? null }, target);
               return { result: null, hash: "" };
             },
             { loading: "Guardando el perfil…", success: "Perfil actualizado." },
@@ -503,7 +514,7 @@ function CreateCampaign({ onDone }: { onDone: () => void }) {
   );
 }
 
-function MediaEditor({ campaignId, meta, onDone }: { campaignId: bigint; meta: CampaignMeta | undefined; onDone: () => void }) {
+export function MediaEditor({ campaignId, meta, onDone }: { campaignId: bigint; meta: CampaignMeta | undefined; onDone: () => void }) {
   const { run, pending } = useTx();
   const [cover, setCover] = useState<File | null>(null);
   const [keepCover, setKeepCover] = useState<string | null>(meta?.cover_path ?? null);

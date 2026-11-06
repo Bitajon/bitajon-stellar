@@ -85,4 +85,6 @@ Los contratos solo guardan datos esenciales y huellas. Lo demás vive en Supabas
 - **Evidencia verificable:** se arma un manifiesto JSON con la huella SHA-256 de cada archivo; la huella del manifiesto es la que se registra con `submit_evidence`. El navegador del donante recalcula las huellas y muestra «Evidencia verificada».
 - **RUT:** su huella queda en el contrato (`rut_hash`) al registrarse; el admin ve si el archivo guardado coincide.
 - **Despliegues permitidos y admin por despliegue:** constante `CONFIGS` en la Edge Function. Si se redespliegan los contratos, hay que agregarlos ahí.
-- SQL: `supabase/migrations/20261106000000_bitajon_offchain.sql`. Contenido de demo: `npm run seed:media`.
+- **Admin:** puede cambiar fotos de cualquier campaña y el perfil/logo de cualquier fundación (botones en /admin y en cada campaña). El RUT solo lo sube la propia fundación.
+- **Velocidad:** los eventos de los contratos (donaciones, hitos, registros) se copian en `bitajon_events`; la página los lee de ahí y en segundo plano pide `sync-events` para traer lo nuevo. Además guarda en el navegador lo último que vio (24 h) y lo muestra al instante mientras se actualiza.
+- SQL: `supabase/migrations/20261106000000_bitajon_offchain.sql` y `20261106150000_bitajon_events_index.sql`. Contenido de demo: `npm run seed:media`.

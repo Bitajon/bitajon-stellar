@@ -120,3 +120,53 @@ export function asBigInt(v: unknown): bigint {
 export function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
+/* ------------------------------------------------------------------ */
+/* Índice en Supabase                                                   */
+/* ------------------------------------------------------------------ */
+// La Edge Function copia los eventos de la red en la tabla bitajon_events. Leer de ahí
+// toma milisegundos (en vez de recorrer la red por páginas) y además conserva el
+// historial completo, aunque la red pública solo guarde los últimos ~7 días.
+
+type EventRow = { id: string; contract_id: string; name: string; topics: unknown[]; data: Record<string, unknown>; ledger: number; closed_at: string; tx_hash: string };
+
+async function supa() {
+  return (await import("./offchain")).supabase;
+}
+
+/** Lee los eventos indexados. Devuelve null si el índice aún no tiene nada para este despliegue. */
+export async function fetchIndexedEvents(deployment: string): Promise<ChainEvent[] | null> {
+  const db = await supa();
+  const out: ChainEvent[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from("bitajon_events")
+      .select("id, contract_id, name, topics, data, ledger, closed_at, tx_hash")
+      .eq("deployment", deployment)
+      .order("ledger", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    for (const r of (data ?? []) as EventRow[])
+      out.push({ id: r.id, name: r.name, topics: r.topics, data: r.data, ledger: r.ledger, closedAt: new Date(r.closed_at).toISOString(), txHash: r.tx_hash, contractId: r.contract_id });
+    if (!data || data.length < pageSize) break;
+  }
+  if (out.length === 0) {
+    const { data } = await db.from("bitajon_sync").select("deployment").eq("deployment", deployment).maybeSingle();
+    if (!data) return null; // nunca se ha sincronizado
+  }
+  return out;
+}
+
+/** Pide a la Edge Function que traiga de la red los eventos nuevos. Devuelve cuántos agregó. */
+export async function syncIndexedEvents(deployment: string): Promise<number> {
+  const { EDGE_FUNCTION_URL, SUPABASE_ANON_KEY } = await import("../config");
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ action: "sync-events", deployment }),
+  });
+  if (!res.ok) throw new Error(`sync-events ${res.status}`);
+  const j = (await res.json()) as { inserted?: number };
+  return j.inserted ?? 0;
+}

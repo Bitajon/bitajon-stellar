@@ -2,17 +2,19 @@
 // Única puerta de escritura a Supabase. Cada petición trae un mensaje firmado con la wallet
 // Stellar (Varial/Freighter signMessage) y la autoridad se comprueba contra los contratos:
 //  - imágenes / evidencia de una campaña: solo la fundación dueña (campaign.nonprofit on-chain)
-//  - perfil / logo / RUT de una fundación: solo esa misma dirección
+//    (o el admin del despliegue)
+//  - perfil / logo de una fundación: esa misma dirección o el admin; RUT: solo la fundación
 //  - ver el RUT: solo el admin configurado para ese registro
+//  - "sync-events" (público): copia en bitajon_events los eventos leídos de la red
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { Networks, StrKey, contract } from "npm:@stellar/stellar-sdk@17";
+import { Networks, StrKey, contract, rpc, scValToNative } from "npm:@stellar/stellar-sdk@17";
 
 const RPC_URL = "https://soroban-testnet.stellar.org";
 // Despliegues permitidos (IDs públicos). admin = única cuenta que puede ver RUTs.
 const CONFIGS = [
-  { name: "oficial", nonprofit: "CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K", campaigns: "CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR", admin: "GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5" },
-  { name: "demo", nonprofit: "CCVKZINNVI3KT4NVDTLSGARRSA6VUS5LMOPVLC2LVIPJGTKZ5JTZSM4M", campaigns: "CBLOWODTDTCW3QEXRILELV7HFSV7AMTRRF4QC5WOYVRSZXWYE57IX4FF", admin: "GAK5R3LUSKVWX3L4X4HR3XI5QT4SOWBOEAO3NQUHK7CH4GULLVQCUS4U" },
+  { name: "oficial", nonprofit: "CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K", campaigns: "CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR", vault: "CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT", router: "CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD", admin: "GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5" },
+  { name: "demo", nonprofit: "CCVKZINNVI3KT4NVDTLSGARRSA6VUS5LMOPVLC2LVIPJGTKZ5JTZSM4M", campaigns: "CBLOWODTDTCW3QEXRILELV7HFSV7AMTRRF4QC5WOYVRSZXWYE57IX4FF", vault: "CCG5H4OD35N5U2OUPSBO2USRGMWKCZ54WHDNIDEL3RPRTLRLAXICAFIQ", router: "CCWULVXPIT2NOY7QLBTXJVQORNKKPAUTZ5AGWEYEG6A24N6R36VHDC4I", admin: "GAK5R3LUSKVWX3L4X4HR3XI5QT4SOWBOEAO3NQUHK7CH4GULLVQCUS4U" },
 ];
 const AUTH_TTL_MS = 30 * 60 * 1000;
 const BUCKET = { media: "bitajon-media", evidence: "bitajon-evidence", rut: "bitajon-rut" } as const;
@@ -120,9 +122,10 @@ const safeName = (n: string) => (n || "archivo").normalize("NFKD").replace(/[^\w
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf" };
 
 async function requireOwner(signer: string, registry: string, campaignId: number) {
-  configFor("campaigns", registry);
+  const cfg = configFor("campaigns", registry);
   if (!Number.isSafeInteger(campaignId) || campaignId < 1) throw new HttpError(400, "Campaña inválida");
   const owner = await campaignOwner(registry, campaignId);
+  if (signer === cfg.admin) return; // el admin puede gestionar las fotos de cualquier campaña
   if (owner !== signer) throw new HttpError(403, "Solo la fundación dueña de la campaña puede hacer esto");
 }
 
@@ -131,9 +134,103 @@ function assertPaths(paths: unknown[], prefix: string) {
     if (typeof p !== "string" || !p.startsWith(prefix) || p.includes("..")) throw new HttpError(400, "Ruta de archivo inválida");
 }
 
+/** Una fundación edita su propio perfil; el admin puede editar el de cualquiera. */
+function targetNonprofit(signer: string, cfg: { admin: string }, requested: unknown): string {
+  const t = typeof requested === "string" && requested ? requested : signer;
+  if (t !== signer && signer !== cfg.admin) throw new HttpError(403, "Solo esa fundación o el admin pueden editar este perfil");
+  if (!StrKey.isValidEd25519PublicKey(t)) throw new HttpError(400, "Dirección inválida");
+  return t;
+}
+
+/* ---------- Índice de eventos: copia en Supabase de los eventos de los contratos ---------- */
+const server = new rpc.Server(RPC_URL);
+const LOOKBACK = 120_000;
+function jsonSafe(v: unknown): unknown {
+  if (typeof v === "bigint") return v.toString();
+  if (v instanceof Uint8Array) return hex(v);
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, jsonSafe(x)]));
+  return v;
+}
+function native(v: any): unknown {
+  try {
+    return jsonSafe(scValToNative(v));
+  } catch {
+    return null;
+  }
+}
+const cursorLedger = (c: string) => {
+  try {
+    return Number(BigInt(c.split("-")[0]) >> 32n);
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+};
+
+async function syncEvents(deployment: string, force = false) {
+  const cfg = configFor("campaigns", deployment) as (typeof CONFIGS)[number];
+  const { data: st } = await db.from("bitajon_sync").select("cursor, synced_at").eq("deployment", deployment).maybeSingle();
+  if (!force && st?.synced_at && Date.now() - Date.parse(st.synced_at) < 8000) return { inserted: 0, skipped: true };
+  await db.from("bitajon_sync").upsert({ deployment, cursor: st?.cursor ?? null, synced_at: new Date().toISOString() });
+  const filters = [{ type: "contract" as const, contractIds: [cfg.nonprofit, cfg.campaigns, cfg.vault, cfg.router] }];
+  const limit = 200;
+  let page: any;
+  if (st?.cursor) {
+    try {
+      page = await server.getEvents({ cursor: st.cursor, filters, limit });
+    } catch {
+      page = null; // cursor fuera de la ventana de retención
+    }
+  }
+  if (!page) {
+    const latest = await server.getLatestLedger();
+    let startLedger = Math.max(1, latest.sequence - LOOKBACK);
+    try {
+      page = await server.getEvents({ startLedger, filters, limit });
+    } catch (err) {
+      const m = String((err as Error)?.message ?? err).match(/range:?\s*(\d+)\s*-\s*(\d+)/i);
+      if (!m) throw err;
+      startLedger = Number(m[1]) + 1;
+      page = await server.getEvents({ startLedger, filters, limit });
+    }
+  }
+  let inserted = 0;
+  const t0 = Date.now();
+  for (let i = 0; i < 60; i++) {
+    const rows = page.events.map((e: any) => {
+      const topics = (e.topic ?? []).map(native);
+      const value = native(e.value);
+      const cid = typeof e.contractId === "string" ? e.contractId : e.contractId?.contractId?.() ?? String(e.contractId ?? "");
+      return {
+        deployment,
+        id: e.id,
+        contract_id: cid,
+        name: String(topics[0] ?? "").toLowerCase().replace(/[_\s-]/g, ""),
+        topics,
+        data: value && typeof value === "object" && !Array.isArray(value) ? value : { value },
+        ledger: e.ledger,
+        closed_at: e.ledgerClosedAt,
+        tx_hash: e.txHash ?? "",
+      };
+    });
+    if (rows.length) {
+      const { error } = await db.from("bitajon_events").upsert(rows, { ignoreDuplicates: true });
+      if (error) throw new HttpError(500, error.message);
+      inserted += rows.length;
+    }
+    if (page.cursor) await db.from("bitajon_sync").upsert({ deployment, cursor: page.cursor, ledger: page.latestLedger, synced_at: new Date().toISOString() });
+    const reachedEnd = !page.cursor || cursorLedger(page.cursor) >= page.latestLedger;
+    if ((reachedEnd && page.events.length < limit) || Date.now() - t0 > 40_000) break;
+    page = await server.getEvents({ cursor: page.cursor, filters, limit });
+  }
+  return { inserted };
+}
+
 const clean = (v: unknown, max = 200) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
 async function handle(body: any) {
+  // Público: cualquiera puede pedir que se actualice el índice (los datos salen de la red, no del cliente).
+  if (body.action === "sync-events") return syncEvents(String(body.deployment), false);
   const signer = await verifyAuth(body.auth);
   switch (body.action) {
     case "whoami":
@@ -151,9 +248,10 @@ async function handle(body: any) {
         bucket = kind === "media" ? BUCKET.media : BUCKET.evidence;
         prefix = `${body.registry}/${campaignId}/`;
       } else {
-        configFor("nonprofit", String(body.registry));
+        const cfg = configFor("nonprofit", String(body.registry));
+        const target = kind === "rut" ? signer : targetNonprofit(signer, cfg, body.address);
         bucket = kind === "rut" ? BUCKET.rut : BUCKET.media;
-        prefix = kind === "rut" ? `${body.registry}/${signer}/` : `${body.registry}/nonprofits/${signer}/`;
+        prefix = kind === "rut" ? `${body.registry}/${signer}/` : `${body.registry}/nonprofits/${target}/`;
       }
       const out = [];
       for (const f of files) {
@@ -183,12 +281,13 @@ async function handle(body: any) {
 
     case "save-nonprofit": {
       const registry = String(body.registry);
-      configFor("nonprofit", registry);
+      const cfg = configFor("nonprofit", registry);
+      const target = targetNonprofit(signer, cfg, body.address);
       const p = body.profile ?? {};
-      if (p.logo_path) assertPaths([p.logo_path], `${registry}/nonprofits/${signer}/`);
+      if (p.logo_path) assertPaths([p.logo_path], `${registry}/nonprofits/${target}/`);
       const row = {
         registry,
-        address: signer,
+        address: target,
         display_name: clean(p.display_name, 120),
         description: clean(p.description, 1200),
         website: clean(p.website),

@@ -122,9 +122,9 @@ export type CampaignView = {
 };
 
 export async function getCampaignView(id: bigint): Promise<CampaignView | null> {
-  const campaign = await getCampaign(id);
+  // Campaña y bóveda se piden al mismo tiempo (la bóveda puede no existir todavía).
+  const [campaign, vault] = await Promise.all([getCampaign(id), getVault(id)]);
   if (!campaign) return null;
-  const vault = await getVault(id);
   return { id, campaign, vault };
 }
 
@@ -132,10 +132,16 @@ export async function getCampaignView(id: bigint): Promise<CampaignView | null> 
  * Los contratos no tienen una función para listar campañas, pero los IDs son
  * consecutivos desde 1. Se consultan en lotes hasta encontrar el primero que no existe.
  */
-export async function listCampaigns(max = 200): Promise<CampaignView[]> {
+/**
+ * Los contratos no tienen una función para listar campañas, pero los IDs son consecutivos
+ * desde 1. Si ya se sabe cuántas hay (por los eventos indexados), se piden exactamente esas
+ * más una de prueba; así no se satura el RPC público con consultas a IDs que no existen.
+ */
+export async function listCampaigns(knownCount = 0, max = 200): Promise<CampaignView[]> {
   const out: CampaignView[] = [];
-  const batch = 6;
-  for (let start = 1; start <= max; start += batch) {
+  let start = 1;
+  let batch = knownCount > 0 ? knownCount + 1 : 6;
+  while (start <= max) {
     const ids = Array.from({ length: batch }, (_, i) => BigInt(start + i));
     const views = await Promise.all(ids.map((id) => getCampaignView(id)));
     let ended = false;
@@ -147,6 +153,8 @@ export async function listCampaigns(max = 200): Promise<CampaignView[]> {
       out.push(v);
     }
     if (ended) break;
+    start += batch;
+    batch = 6;
   }
   return out;
 }

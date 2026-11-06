@@ -158,7 +158,7 @@ async function uploadFiles(
   signer: MessageSigner,
   kind: UploadKind,
   files: File[],
-  scope: { registry: string; campaign_id?: number },
+  scope: { registry: string; campaign_id?: number; address?: string },
 ): Promise<Uploaded[]> {
   if (files.length === 0) return [];
   const { uploads } = await call<{ uploads: { path: string; token: string; bucket: string }[] }>(signer, "upload-urls", {
@@ -191,8 +191,9 @@ export async function saveCampaignMedia(
 
 export type NonprofitProfileInput = Socials & { display_name?: string; description?: string; logo?: File | null; keepLogo?: string | null };
 
-export async function saveNonprofitProfile(signer: MessageSigner, p: NonprofitProfileInput) {
-  const scope = { registry: REGISTRY.nonprofits };
+/** `target`: fundación a editar (por defecto la propia; el admin puede editar cualquiera). */
+export async function saveNonprofitProfile(signer: MessageSigner, p: NonprofitProfileInput, target?: string) {
+  const scope = { registry: REGISTRY.nonprofits, ...(target ? { address: target } : {}) };
   const logo = p.logo ? (await uploadFiles(signer, "logo", [await prepareImage(p.logo, 600)], scope))[0].path : (p.keepLogo ?? null);
   const { logo: _l, keepLogo: _k, ...rest } = p;
   await call(signer, "save-nonprofit", { ...scope, profile: { ...rest, logo_path: logo } });

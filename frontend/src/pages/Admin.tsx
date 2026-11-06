@@ -1,6 +1,6 @@
 import { StrKey } from "@stellar/stellar-sdk";
 import { useQuery } from "@tanstack/react-query";
-import { BadgeCheck, Ban, Building2, FileCheck2, FileLock2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Ban, Building2, FileCheck2, FileLock2, ImageIcon, Pencil, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { EvidencePanel } from "../components/EvidencePanel";
@@ -8,12 +8,13 @@ import { NonprofitLogo, SocialLinks } from "../components/Nonprofit";
 import { RequireWallet } from "../components/RequireWallet";
 import { AddressLink, EmptyState, PageHeader, Spinner, StageBadge } from "../components/ui";
 import { ADMIN_ADDRESS } from "../config";
-import { registeredNonprofitsFrom, useCampaigns, useEvents, useFeeBps, useNonprofitMeta, useProfile } from "../hooks/queries";
+import { registeredNonprofitsFrom, useCampaignMetaMap, useCampaigns, useEvents, useFeeBps, useNonprofitMeta, useProfile } from "../hooks/queries";
 import { useTx } from "../hooks/useTx";
 import { friendlyError } from "../lib/errors";
 import { formatToken, relativeTime, shortAddress } from "../lib/format";
 import { toHex } from "../lib/hash";
-import { getRutUrl } from "../lib/offchain";
+import { BUCKETS, getRutUrl, publicUrl } from "../lib/offchain";
+import { MediaEditor, ProfileEditor } from "./Foundation";
 import { stageOf } from "../lib/status";
 import { approveNonprofit, getTreasury, releaseFinal, revokeNonprofit } from "../lib/stellar";
 import { toast } from "sonner";
@@ -77,7 +78,7 @@ function AdminInner() {
         <h2 className="flex items-center gap-2 text-2xl font-semibold">
           <Building2 className="h-5 w-5 text-leaf-600" /> Fundaciones
         </h2>
-        <p className="mt-1 text-sm text-slate-600">Registros recientes (últimos días que guarda la red). Para una fundación más antigua, búscala por su dirección.</p>
+        <p className="mt-1 text-sm text-slate-600">Todas las fundaciones registradas. También puedes buscar una por su dirección.</p>
         <label className="relative mt-4 block max-w-xl">
           <span className="sr-only">Buscar fundación por dirección</span>
           <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -94,6 +95,8 @@ function AdminInner() {
           )}
         </div>
       </section>
+
+      <MediaAdmin />
 
       <section className="card p-6">
         <h2 className="text-xl font-semibold">Configuración del router</h2>
@@ -117,6 +120,7 @@ function NonprofitRow({ address, at }: { address: string; at?: string }) {
   const meta = useNonprofitMeta(address);
   const { run, pending } = useTx();
   const { address: admin, signMessage } = useWallet();
+  const [editing, setEditing] = useState(false);
   const [rut, setRut] = useState<{ loading: boolean; match?: boolean | null; missing?: boolean }>({ loading: false });
   const p = profile.data;
   const status = p?.status.tag;
@@ -214,10 +218,64 @@ function NonprofitRow({ address, at }: { address: string; at?: string }) {
                 <Ban className="h-4 w-4" /> Revocar
               </button>
             )}
+            <button type="button" className="btn-ghost !py-2" onClick={() => setEditing(!editing)}>
+              <Pencil className="h-4 w-4" /> Editar perfil
+            </button>
           </div>
+          {editing && (
+            <div className="mt-4">
+              <ProfileEditor profile={p} meta={meta.data} target={address} onDone={() => setEditing(false)} />
+            </div>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Fotos de todas las campañas: el admin puede cambiarlas sin entrar con cada fundación. */
+function MediaAdmin() {
+  const campaigns = useCampaigns();
+  const metaMap = useCampaignMetaMap();
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section>
+      <h2 className="flex items-center gap-2 text-2xl font-semibold">
+        <ImageIcon className="h-5 w-5 text-leaf-600" /> Fotos de las campañas
+      </h2>
+      <p className="mt-1 text-sm text-slate-600">Con la cuenta admin puedes cambiar la portada y la galería de cualquier campaña. El perfil y logo de cada fundación se editan abajo, en «Fundaciones».</p>
+      <div className="mt-4 space-y-3">
+        {campaigns.isLoading && <Spinner className="h-6 w-6 text-brand-600" />}
+        {(campaigns.data ?? []).map((v) => {
+          const id = v.id.toString();
+          const meta = metaMap.data?.get(id);
+          const cover = publicUrl(BUCKETS.media, meta?.cover_path);
+          return (
+            <div key={id} className="card p-4">
+              <div className="flex items-center gap-4">
+                {cover ? (
+                  <img src={cover} alt="" className="h-14 w-20 shrink-0 rounded-xl object-cover" />
+                ) : (
+                  <span className="grid h-14 w-20 shrink-0 place-items-center rounded-xl bg-sand text-slate-400">
+                    <ImageIcon className="h-5 w-5" />
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <Link to={`/campanas/${id}`} className="block truncate font-semibold text-brand-900 hover:text-brand-700">
+                    #{id} · {v.campaign.name}
+                  </Link>
+                  <p className="text-xs text-slate-500">{(meta?.gallery ?? []).length} fotos en la galería</p>
+                </div>
+                <button type="button" className="btn-outline !py-2" onClick={() => setOpen(open === id ? null : id)}>
+                  {open === id ? "Cerrar" : "Fotos"}
+                </button>
+              </div>
+              {open === id && <MediaEditor campaignId={v.id} meta={meta} onDone={() => setOpen(null)} />}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

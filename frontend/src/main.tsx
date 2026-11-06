@@ -7,6 +7,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { App } from "./App";
+import { persistCache, restoreCache } from "./lib/persist";
 import { WalletProvider } from "./lib/wallet";
 
 const queryClient = new QueryClient({
@@ -14,6 +15,9 @@ const queryClient = new QueryClient({
     queries: { retry: 1, refetchOnWindowFocus: false },
   },
 });
+// Muestra al instante lo último que se vio y lo actualiza en segundo plano.
+restoreCache(queryClient);
+persistCache(queryClient);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

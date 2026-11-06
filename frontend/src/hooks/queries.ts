@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { CONTRACTS } from "../config";
-import { asBigInt, asString, fetchEvents, isEvent, type ChainEvent } from "../lib/events";
+import { asBigInt, asString, fetchEvents, fetchIndexedEvents, isEvent, syncIndexedEvents, type ChainEvent } from "../lib/events";
 import { getNativeBalance } from "../lib/horizon";
 import { getEvidenceRecords, getNonprofitMeta, listCampaignMeta } from "../lib/offchain";
 import { getCampaignView, getFeeBps, getProfile, listCampaigns, quote } from "../lib/stellar";
@@ -45,7 +45,20 @@ export function useEvidenceRecords(id: bigint | null, enabled = true) {
 }
 
 export function useCampaigns() {
-  return useQuery({ queryKey: qk.campaigns, queryFn: () => listCampaigns(), staleTime: 15_000 });
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.campaigns,
+    queryFn: async () => {
+      // Cuántas campañas hay según los eventos indexados (rápido); si falla, se busca a ciegas.
+      const events = await qc.fetchQuery({ queryKey: qk.events, queryFn: loadEvents, staleTime: 20_000 }).catch(() => []);
+      const known = events.filter((e) => isEvent(e, "CampaignCreated")).length;
+      const list = await listCampaigns(known);
+      // Cada campaña queda lista en caché: abrir su detalle es inmediato.
+      for (const v of list) qc.setQueryData(qk.campaign(String(v.id)), v);
+      return list;
+    },
+    staleTime: 15_000,
+  });
 }
 
 export function useCampaign(id: bigint | null) {
@@ -88,13 +101,42 @@ export function useBalance(address: string | null) {
   });
 }
 
-/** Eventos recientes de los 4 contratos (una sola consulta compartida por toda la app). */
+const DEPLOYMENT = CONTRACTS.campaignRegistry;
+
+async function loadEvents(): Promise<ChainEvent[]> {
+  try {
+    const indexed = await fetchIndexedEvents(DEPLOYMENT);
+    if (indexed) return indexed;
+  } catch {
+    /* se cae a la red */
+  }
+  return fetchEvents(Object.values(CONTRACTS));
+}
+let lastSync = 0;
+
+/** Pide al índice que se ponga al día con la red; si llegó algo nuevo, refresca los eventos. */
+export async function syncEventsIndex(qc: ReturnType<typeof useQueryClient>, force = false) {
+  if (!force && Date.now() - lastSync < 15_000) return;
+  lastSync = Date.now();
+  try {
+    if ((await syncIndexedEvents(DEPLOYMENT)) > 0) await qc.invalidateQueries({ queryKey: qk.events });
+  } catch {
+    /* el índice es una optimización: si falla, se sigue con lo que hay */
+  }
+}
+
+/**
+ * Eventos de los 4 contratos (una sola consulta compartida por toda la app).
+ * Se leen del índice en Supabase (rápido y con historial completo) y, en segundo plano,
+ * se le pide al índice que traiga lo nuevo de la red. Si el índice no responde, se lee la red.
+ */
 export function useEvents() {
-  return useQuery({
-    queryKey: qk.events,
-    queryFn: () => fetchEvents(Object.values(CONTRACTS)),
-    staleTime: 20_000,
-  });
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: qk.events, queryFn: loadEvents, staleTime: 20_000 });
+  useEffect(() => {
+    void syncEventsIndex(qc);
+  }, [qc]);
+  return q;
 }
 
 export type Donation = {
@@ -176,6 +218,7 @@ export function useRefreshAll() {
   const qc = useQueryClient();
   return useCallback(
     async (campaignId?: bigint) => {
+      void syncEventsIndex(qc, true);
       const tasks = [
         qc.invalidateQueries({ queryKey: qk.campaigns }),
         qc.invalidateQueries({ queryKey: qk.events }),

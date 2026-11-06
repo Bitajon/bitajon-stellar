@@ -49,7 +49,7 @@ function Inner() {
           </Link>
         }
       >
-        Aquí aparecen las donaciones de los últimos días que guarda la red de Stellar desde esta wallet.
+        Aquí aparecen todas las donaciones hechas desde esta wallet (registradas en Stellar).
       </EmptyState>
     );
 
