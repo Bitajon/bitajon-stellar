@@ -55,3 +55,17 @@ No hace falta un `.env`: por defecto usa los contratos desplegados (README del m
 ```bash
 npm run sync:bindings
 ```
+
+## Entorno de demo (contratos de prueba)
+
+Como los contratos oficiales tienen un solo admin (la cuenta de Andrés), hay una **copia de prueba** de los 4 contratos, desplegada desde el mismo wasm, con su propio admin y datos de ejemplo: 2 fundaciones (demo) y 5 campañas en todas las etapas.
+
+```bash
+npm run dev:demo     # local con los contratos de prueba (.env.demo)
+npm run build:demo   # build con los contratos de prueba
+npm run seed:demo    # vuelve a desplegar y cargar todo desde cero (crea cuentas nuevas)
+```
+
+- Publicado en: https://bitajon-demo.vercel.app
+- `scripts/.demo-state.json` guarda las cuentas de prueba con sus llaves secretas de **testnet**. Está en `.gitignore`: no se sube.
+- `demo-evidencia/` tiene los archivos cuya huella está registrada en las campañas 3 y 4, para probar «Comprobar un archivo de evidencia».

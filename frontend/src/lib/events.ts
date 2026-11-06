@@ -35,8 +35,10 @@ function contractIdOf(e: { contractId?: unknown }): string {
 }
 
 function toNative(v: unknown): unknown {
+  // En el SDK 17 cada tipo es su propia clase (ScValSymbol, ScValU64…), así que no se usa instanceof.
+  if (v == null || typeof v !== "object") return v;
   try {
-    return v instanceof xdr.ScVal ? scValToNative(v as unknown as xdr.ScVal) : v;
+    return scValToNative(v as xdr.ScVal);
   } catch {
     return undefined;
   }
@@ -76,15 +78,29 @@ async function firstPage(contractIds: string[], limit: number) {
   }
 }
 
-/** Trae los eventos recientes de uno o varios contratos (máx. 5 contratos por filtro). */
-export async function fetchEvents(contractIds: string[], maxPages = 10): Promise<ChainEvent[]> {
+/** Ledger al que apunta un cursor de getEvents ("<toid>-<n>"; el ledger va en los 32 bits altos). */
+function cursorLedger(cursor: string): number {
+  try {
+    return Number(BigInt(cursor.split("-")[0]) >> 32n);
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+/**
+ * Trae los eventos recientes de uno o varios contratos (máx. 5 contratos por filtro).
+ * El RPC revisa los ledgers por tramos: una página puede venir vacía con un cursor
+ * para seguir, así que se continúa hasta alcanzar el último ledger.
+ */
+export async function fetchEvents(contractIds: string[], maxPages = 40): Promise<ChainEvent[]> {
   const limit = 200;
   const filters = [{ type: "contract" as const, contractIds }];
   const out: ChainEvent[] = [];
   let page = await firstPage(contractIds, limit);
   for (let i = 0; i < maxPages; i++) {
     out.push(...page.events.map(parse));
-    if (page.events.length < limit || !page.cursor) break;
+    const reachedEnd = !page.cursor || cursorLedger(page.cursor) >= page.latestLedger;
+    if (reachedEnd && page.events.length < limit) break;
     page = await server.getEvents({ cursor: page.cursor, filters, limit });
   }
   return out;

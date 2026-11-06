@@ -12,7 +12,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "sync:bindings": "node scripts/sync-bindings.mjs"
+    "sync:bindings": "node scripts/sync-bindings.mjs",
+    "dev:demo": "vite --mode demo",
+    "build:demo": "tsc --noEmit && vite build --mode demo",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
