@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.vercel
+*.log
+.DS_Store
+
+# Datos de prueba locales (llaves de testnet)
+scripts/.demo-state.json
+.env.demo.local

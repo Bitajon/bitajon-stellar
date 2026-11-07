@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* Paleta tomada del logo de BITAJÓN: azul profundo (#01417E) y verde hoja (#018D46). */
+@theme {
+  --color-brand-50: #eef5fc;
+  --color-brand-100: #d6e6f6;
+  --color-brand-200: #aecbea;
+  --color-brand-300: #7aa8d8;
+  --color-brand-400: #4580bf;
+  --color-brand-500: #1f60a3;
+  --color-brand-600: #0d4f8f;
+  --color-brand-700: #01417e;
+  --color-brand-800: #033566;
+  --color-brand-900: #062a4f;
+  --color-brand-950: #041a33;
+
+  --color-leaf-50: #ecf8f1;
+  --color-leaf-100: #d0eedd;
+  --color-leaf-200: #a3dcbb;
+  --color-leaf-300: #6cc493;
+  --color-leaf-400: #3aa86d;
+  --color-leaf-500: #1a9757;
+  --color-leaf-600: #018d46;
+  --color-leaf-700: #04723a;
+  --color-leaf-800: #075a30;
+  --color-leaf-900: #084a29;
+
+  --color-sand: #f6f7f2;
+  --color-ink: #0f1f33;
+
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+
+  --shadow-soft: 0 1px 2px rgb(15 31 51 / 0.04), 0 8px 24px -8px rgb(15 31 51 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(15 31 51 / 0.05), 0 18px 40px -12px rgb(1 65 126 / 0.28);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-white font-sans text-ink antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight text-brand-900;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    @apply bg-leaf-200 text-brand-900;
+  }
+}
+
+@utility container-page {
+  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition
+    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500
+    disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98];
+}
+@utility btn-primary {
+  @apply btn bg-leaf-600 text-white shadow-soft hover:bg-leaf-700;
+}
+@utility btn-navy {
+  @apply btn bg-brand-700 text-white shadow-soft hover:bg-brand-800;
+}
+@utility btn-outline {
+  @apply btn border border-brand-200 bg-white text-brand-800 hover:border-brand-300 hover:bg-brand-50;
+}
+@utility btn-ghost {
+  @apply btn text-brand-800 hover:bg-brand-50;
+}
+@utility card {
+  @apply rounded-3xl border border-slate-200/70 bg-white shadow-soft;
+}
+@utility label {
+  @apply mb-1.5 block text-sm font-semibold text-brand-900;
+}
+@utility input {
+  @apply w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-ink placeholder:text-slate-400
+    transition focus:border-leaf-500 focus:ring-4 focus:ring-leaf-100 focus:outline-none sm:text-sm;
+}
+@utility hint {
+  @apply mt-1.5 text-xs text-slate-500;
+}
+@utility eyebrow {
+  @apply text-xs font-bold tracking-[0.18em] text-leaf-700 uppercase;
+}
+@utility ribbon-gradient {
+  background-image: linear-gradient(110deg, var(--color-brand-700) 0%, var(--color-brand-500) 38%, var(--color-leaf-500) 72%, var(--color-leaf-600) 100%);
+}
+@utility text-ribbon {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(100deg, var(--color-brand-700), var(--color-leaf-600));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.animate-grow {
+  transform-origin: left;
+  animation: grow 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.animate-rise {
+  animation: rise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
