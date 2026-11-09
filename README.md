@@ -70,14 +70,14 @@ Para empezar a trabajar en este monorepo, clona el repositorio utilizando SSH (r
 
 **Vía SSH:**
 ```bash
-git clone git@github.com:ThrivingHub/thriving-stellar.git
-cd thriving-stellar
+git clone git@github.com:Bitajon/bitajon-stellar.git
+cd bitajon-stellar
 ```
 
 **Vía HTTPS:**
 ```bash
-git clone https://github.com/ThrivingHub/thriving-stellar.git
-cd thriving-stellar
+git clone https://github.com/Bitajon/bitajon-stellar.git
+cd bitajon-stellar
 ```
 
 ---
