@@ -1,11 +1,11 @@
-# Thriving Stellar 🌱
+# Bitajón Stellar 🌱
 
-[![Contracts CI](https://github.com/ThrivingHub/thriving-stellar/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/ThrivingHub/thriving-stellar/actions/workflows/contracts-ci.yml)
+[![Contracts CI](https://github.com/Bitajon/bitajon-stellar/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/Bitajon/bitajon-stellar/actions/workflows/contracts-ci.yml)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Testnet](https://img.shields.io/badge/Stellar-Testnet-blueviolet)](https://stellar.expert/explorer/testnet)
 
-Implementación de la visión de **ThrivingHub** para el ecosistema de **Stellar** y **Soroban**. Este repositorio contiene la infraestructura descentralizada para permitir a fundaciones y ONG's recaudar donaciones con trazabilidad absoluta y validación de impacto real.
+Implementación de la visión de **Bitajon** para el ecosistema de **Stellar** y **Soroban**. Este repositorio contiene la infraestructura descentralizada para permitir a fundaciones y ONG's recaudar donaciones con trazabilidad absoluta y validación de impacto real.
 
 ## 💡 El Modelo de Confianza (Hipótesis de Trabajo)
 
@@ -109,7 +109,7 @@ Cada push o Pull Request a `main` dispara el workflow [**Contracts CI**](./.gith
 2.  ✅ Ejecución de la suite de tests (`cargo test`).
 3.  ✅ Sincronización de snapshots de pruebas (`git diff --exit-code -- '*/test_snapshots/'`).
 
-Puedes ver el estado en tiempo real en la pestaña [**Actions**](https://github.com/ThrivingHub/thriving-stellar/actions) del repositorio, o en el badge al inicio de este documento.
+Puedes ver el estado en tiempo real en la pestaña [**Actions**](https://github.com/Bitajon/bitajon-stellar/actions) del repositorio, o en el badge al inicio de este documento.
 
 ---
 
