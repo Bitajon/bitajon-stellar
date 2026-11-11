@@ -7,43 +7,51 @@
 //! `nonprofit-registry`, `campaign-registry`, `campaign-vault`, and
 //! `donation-router`, or as the `verifier` of a vault.
 //!
-//! # Model
-//! * **Signers**: A dynamic set of authorized `Address` (EOAs `G...` or
-//!   smart accounts `C...`).
-//! * **Threshold**: The minimum number of valid signatures required.
-//! * **Any-signer**: Any subset of signers whose count reaches the threshold
-//!   can authorize an action. No specific signer is privileged.
-//! * **Atomic**: When a transaction carries at least `threshold` signatures,
-//!   the authorization is validated inside a single `__check_auth` call. If
-//!   the call succeeds, all the invocations that required this address are
-//!   authorized atomically. If any signature is invalid or the count is
-//!   insufficient, the entire transaction reverts.
+//! # Signer model
 //!
-//! # Example
-//! A 2-of-3 governance account: Alice, Bob, and Carol are signers. Alice and
-//! Bob sign `nonprofit-registry.approve_nonprofit(fundación)`. The transaction
-//! includes both signatures. `__check_auth` validates that both are signers
-//! and that `count >= threshold`. The approval executes atomically. Carol was
-//! not required to participate.
+//! Signers are **Ed25519 public keys** (`BytesN<32>`), not Stellar addresses.
+//! The contract verifies each signature cryptographically against the
+//! `signature_payload` provided by the Soroban host. This is the same model
+//! used by OpenZeppelin's `stellar-accounts` and the official Soroban
+//! examples for multisig smart accounts.
+//!
+//! # Testability
+//!
+//! The signature-verification logic is exposed as a public `verify_signatures`
+//! function so it can be exercised directly by tests and by off-chain clients
+//! that want to pre-check a proof set before submitting a transaction.
+//! `__check_auth` and `verify_signatures` share the same internal routine,
+//! keeping the two paths in sync.
+//!
+//! `verify_signatures` accepts the payload as `BytesN<32>` (raw hash bytes),
+//! not `Hash<32>`, because Soroban only allows `Hash<32>` in the
+//! `__check_auth` trait parameter. Both paths internally convert to `Bytes`,
+//! which is what `ed25519_verify` expects.
+//!
+//! # Model
+//! * **Signers**: `Vec<BytesN<32>>` of Ed25519 public keys.
+//! * **Threshold**: minimum number of valid signatures required.
+//! * **Any-signer**: any subset of signers whose count reaches the threshold
+//!   can authorize an action. No specific signer is privileged.
+//! * **Atomic**: authorization is validated inside a single `__check_auth`
+//!   call. If it succeeds, all the invocations that required this account's
+//!   authorization execute atomically. If it fails, the entire transaction
+//!   reverts.
 //!
 //! # Security
-//! * Duplicate signatures are counted only once.
+//! * Duplicate signers are counted once.
 //! * Removing a signer auto-lowers the threshold if necessary to keep the
 //!   account usable (emits `ThresholdAutoAdjusted`).
 //! * The last signer cannot be removed (the account would be bricked).
 //! * Threshold must always be `1..=signers.len()`.
-//! * All configuration changes require the current threshold, preventing
-//!   privilege escalation by a single signer.
+//! * Configuration changes require the current threshold.
 //! * Instance TTL extended on every entry point.
 //!
 //! # Standards
-//! * **SEP-45 (planned)**: This contract is compatible with SEP-45, the
-//!   standard for Web Authentication in contract accounts. It implements
-//!   `CustomAccountInterface`, which is the prerequisite. A future SEP-45
-//!   adapter (e.g., WebAuthn signers) can be added without changing this
-//!   contract.
-//! * **SEP-53**: Signatures on auth entries follow the SEP-53 message signing
-//!   convention, which the Stellar SDK handles transparently.
+//! * **SEP-45 (planned)**: A future adapter can support WebAuthn signers by
+//!   extending the `SignerProof` enum. The current model is Ed25519 only.
+//! * **SEP-53**: The payload is the `HashIdPreimage::SorobanAuthorization`
+//!   hash, which the Stellar SDK signs transparently.
 
 mod events;
 mod storage;
@@ -52,9 +60,10 @@ mod test;
 
 use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
-    contract, contracterror, contractimpl,
+    contract, contracterror, contractimpl, contracttype,
     crypto::Hash,
-    Address, Env, Vec,
+    panic_with_error,
+    Bytes, BytesN, Env, Vec,
 };
 
 use crate::events::{
@@ -64,6 +73,14 @@ use crate::storage::{
     extend_instance_ttl, get_signers, get_threshold, set_signers, set_threshold,
 };
 
+/// A single signature submitted for authorization.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SignerProof {
+    pub public_key: BytesN<32>,
+    pub signature: BytesN<64>,
+}
+
 /// Errors returned by the governance account.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -71,9 +88,9 @@ use crate::storage::{
 pub enum GovernanceError {
     /// The provided threshold is 0 or greater than the number of signers.
     InvalidThreshold = 1,
-    /// The address is not in the signers set.
+    /// The public key is not in the signers set.
     NotASigner = 2,
-    /// The address is already in the signers set.
+    /// The public key is already in the signers set.
     AlreadySigner = 3,
     /// Fewer valid signatures than the threshold were provided.
     ThresholdNotMet = 4,
@@ -90,14 +107,14 @@ impl GovernanceAccountContract {
     /// and a threshold.
     ///
     /// # Arguments
-    /// * `signers` - Initial set of authorized signers. Must be non-empty.
-    /// * `threshold` - Minimum number of signatures required. Must be
+    /// * `signers` - Initial set of Ed25519 public keys. Must be non-empty.
+    /// * `threshold` - Minimum number of valid signatures. Must be
     ///   `1..=signers.len()`.
     ///
     /// # Errors
     /// * `NoSigners` if `signers` is empty.
     /// * `InvalidThreshold` if `threshold` is out of range.
-    pub fn __constructor(env: Env, signers: Vec<Address>, threshold: u32) {
+    pub fn __constructor(env: Env, signers: Vec<BytesN<32>>, threshold: u32) {
         if signers.is_empty() {
             panic_with_error!(&env, GovernanceError::NoSigners);
         }
@@ -110,8 +127,8 @@ impl GovernanceAccountContract {
 
     // --- Reads ---
 
-    /// Returns the current set of signers.
-    pub fn get_signers(env: Env) -> Vec<Address> {
+    /// Returns the current set of signer public keys.
+    pub fn get_signers(env: Env) -> Vec<BytesN<32>> {
         get_signers(&env)
     }
 
@@ -120,24 +137,45 @@ impl GovernanceAccountContract {
         get_threshold(&env)
     }
 
-    /// Returns `true` if `who` is a current signer.
-    pub fn is_signer(env: Env, who: Address) -> bool {
-        get_signers(&env).contains(&who)
+    /// Returns `true` if `public_key` is a current signer.
+    pub fn is_signer(env: Env, public_key: BytesN<32>) -> bool {
+        get_signers(&env).contains(&public_key)
+    }
+
+    /// Verifies a set of `SignerProof` against the current signers and
+    /// threshold.
+    ///
+    /// This is a pure read-only helper exposed both for off-chain pre-checks
+    /// and for tests. It does not mutate state. It returns `Ok(())` when the
+    /// proofs meet the threshold, `ThresholdNotMet` when they do not, and
+    /// panics (host trap) when any provided signature is cryptographically
+    /// invalid for the payload.
+    ///
+    /// `signature_payload` is the 32-byte hash of the
+    /// `HashIdPreimage::SorobanAuthorization` envelope, exactly as
+    /// `__check_auth` receives it.
+    pub fn verify_signatures(
+        env: Env,
+        signature_payload: BytesN<32>,
+        signatures: Vec<SignerProof>,
+    ) -> Result<(), GovernanceError> {
+        let arr = signature_payload.to_array();
+        let payload_bytes = Bytes::from_slice(&env, &arr);
+        let signers = get_signers(&env);
+        let threshold = get_threshold(&env);
+        verify_signatures_inner(env, payload_bytes, signatures, signers, threshold)
     }
 
     // --- Mutations (all require the current threshold) ---
 
     /// Adds a new signer.
     ///
-    /// The current threshold must authorize this change, meaning the
-    /// transaction must carry at least `threshold` signatures from existing
-    /// signers.
+    /// The current threshold must authorize this change.
     ///
     /// # Errors
-    /// * `AlreadySigner` if `new_signer` is already in the set.
-    pub fn add_signer(env: Env, new_signer: Address) {
+    /// * `AlreadySigner` if the public key is already in the set.
+    pub fn add_signer(env: Env, new_signer: BytesN<32>) {
         extend_instance_ttl(&env);
-        // Requires the current threshold to authorize.
         env.current_contract_address().require_auth();
 
         let mut signers = get_signers(&env);
@@ -160,9 +198,9 @@ impl GovernanceAccountContract {
     /// A `ThresholdAutoAdjusted` event is emitted in that case.
     ///
     /// # Errors
-    /// * `NotASigner` if `signer` is not in the set.
+    /// * `NotASigner` if the public key is not in the set.
     /// * `NoSigners` if `signer` is the last one (cannot brick the account).
-    pub fn remove_signer(env: Env, signer: Address) {
+    pub fn remove_signer(env: Env, signer: BytesN<32>) {
         extend_instance_ttl(&env);
         env.current_contract_address().require_auth();
 
@@ -171,7 +209,6 @@ impl GovernanceAccountContract {
             panic_with_error!(&env, GovernanceError::NotASigner);
         }
 
-        // Rebuild the Vec without `signer`.
         let mut new_signers = Vec::new(&env);
         for s in signers.iter() {
             if s != signer {
@@ -189,7 +226,6 @@ impl GovernanceAccountContract {
         }
         .publish(&env);
 
-        // Auto-adjust threshold if it exceeds the new signer count.
         let current_threshold = get_threshold(&env);
         if current_threshold > new_signers.len() {
             let new_threshold = new_signers.len();
@@ -204,8 +240,7 @@ impl GovernanceAccountContract {
 
     /// Updates the threshold.
     ///
-    /// The current threshold must authorize this change. This prevents a
-    /// single signer from lowering the bar to authorize future actions.
+    /// The current threshold must authorize this change.
     ///
     /// # Errors
     /// * `InvalidThreshold` if `new_threshold` is 0 or greater than the
@@ -230,58 +265,62 @@ impl GovernanceAccountContract {
     }
 }
 
-impl CustomAccountInterface for GovernanceAccountContract {
-    type Error = GovernanceError;
-    /// Signature payload: a vector of addresses representing the signers who
-    /// authorized the transaction.
-    type Signature = Vec<Address>;
+/// Internal verification routine shared by `verify_signatures` and
+/// `__check_auth`.
+///
+/// Panics if any provided signature is cryptographically invalid for the
+/// payload. That is the SDK's `ed25519_verify` behavior and it is the
+/// intended fail-fast semantics: a client that submits a broken signature
+/// has a bug, and the entire transaction should revert.
+fn verify_signatures_inner(
+    env: Env,
+    payload_bytes: Bytes,
+    signatures: Vec<SignerProof>,
+    signers: Vec<BytesN<32>>,
+    threshold: u32,
+) -> Result<(), GovernanceError> {
+    let mut valid_count: u32 = 0;
+    let mut seen: Vec<BytesN<32>> = Vec::new(&env);
 
-    /// Validates that at least `threshold` valid signatures are present.
-    ///
-    /// # Behavior
-    /// * Iterates over the provided signatures.
-    /// * For each one that belongs to the current signers set, calls
-    ///   `require_auth()` to cryptographically prove ownership.
-    /// * Duplicates are ignored (counted once).
-    /// * Succeeds if the count reaches the threshold.
-    ///
-    /// # Atomicity
-    /// This entire check happens inside a single transaction. If it fails,
-    /// every invocation that required this account's authorization is
-    /// reverted. There is no partial state.
-    fn __check_auth(
-        env: Env,
-        _signature_payload: Hash<32>,
-        signatures: Vec<Address>,
-        _auth_contexts: Vec<Context>,
-    ) -> Result<(), Self::Error> {
-        let signers = get_signers(&env);
-        let threshold = get_threshold(&env);
-
-        let mut valid_count: u32 = 0;
-        let mut seen: Vec<Address> = Vec::new(&env);
-
-        for sig in signatures.iter() {
-            // Skip duplicates.
-            if seen.contains(&sig) {
-                continue;
-            }
-            // Only accept signatures from current signers.
-            if signers.contains(&sig) {
-                // Cryptographically prove ownership. This works for EOAs
-                // (validates the tx signature) and for nested smart accounts
-                // (recursively invokes their `__check_auth`).
-                sig.require_auth();
-                seen.push_back(sig);
-                valid_count += 1;
-            }
+    for proof in signatures.iter() {
+        if seen.contains(&proof.public_key) {
+            continue;
+        }
+        if !signers.contains(&proof.public_key) {
+            continue;
         }
 
-        if valid_count < threshold {
-            return Err(GovernanceError::ThresholdNotMet);
-        }
-        Ok(())
+        env.crypto().ed25519_verify(
+            &proof.public_key,
+            &payload_bytes,
+            &proof.signature,
+        );
+
+        seen.push_back(proof.public_key);
+        valid_count += 1;
     }
+
+    if valid_count < threshold {
+        return Err(GovernanceError::ThresholdNotMet);
+    }
+    Ok(())
 }
 
-use soroban_sdk::panic_with_error;
+#[contractimpl]
+impl CustomAccountInterface for GovernanceAccountContract {
+    type Error = GovernanceError;
+    type Signature = Vec<SignerProof>;
+
+    fn __check_auth(
+        env: Env,
+        signature_payload: Hash<32>,
+        signatures: Vec<SignerProof>,
+        _auth_contexts: Vec<Context>,
+    ) -> Result<(), Self::Error> {
+        let arr = signature_payload.to_array();
+        let payload_bytes = Bytes::from_slice(&env, &arr);
+        let signers = get_signers(&env);
+        let threshold = get_threshold(&env);
+        verify_signatures_inner(env, payload_bytes, signatures, signers, threshold)
+    }
+}

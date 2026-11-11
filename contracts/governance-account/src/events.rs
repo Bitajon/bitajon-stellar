@@ -1,17 +1,17 @@
-use soroban_sdk::{contractevent, Address};
+use soroban_sdk::{contractevent, BytesN};
 
-/// Emitted when a new signer is added to the governance account.
+/// Emitted when a new signer is added.
 #[contractevent]
 pub struct SignerAdded {
     #[topic]
-    pub signer: Address,
+    pub signer: BytesN<32>,
 }
 
-/// Emitted when a signer is removed from the governance account.
+/// Emitted when a signer is removed.
 #[contractevent]
 pub struct SignerRemoved {
     #[topic]
-    pub signer: Address,
+    pub signer: BytesN<32>,
 }
 
 /// Emitted when the threshold is updated.
