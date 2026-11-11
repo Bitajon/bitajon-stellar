@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "campaign-registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nonprofit-registry",
  "protocol-interfaces",
@@ -279,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "campaign-vault"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "campaign-registry",
  "nonprofit-registry",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "donation-router"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "campaign-registry",
  "campaign-vault",
@@ -861,7 +861,7 @@ dependencies = [
 
 [[package]]
 name = "governance-account"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ed25519-dalek",
  "nonprofit-registry",
@@ -1156,7 +1156,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "nonprofit-registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "protocol-interfaces",
  "protocol-types",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-interfaces"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "protocol-types",
  "soroban-sdk",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "soroban-sdk",
 ]
