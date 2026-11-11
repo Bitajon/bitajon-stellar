@@ -10,10 +10,23 @@ pub struct CampaignCreated {
     pub target_amount: i128,
 }
 
-/// Emitted when a campaign is cancelled.
+/// Emitted when a campaign is cancelled by its nonprofit.
 #[contractevent]
 pub struct CampaignCancelled {
     #[topic]
     pub campaign_id: u64,
     pub nonprofit: Address,
+}
+
+/// Emitted when the current admin proposes a successor.
+#[contractevent]
+pub struct AdminProposed {
+    pub current: Address,
+    pub proposed: Address,
+}
+
+/// Emitted when the proposed admin accepts the role.
+#[contractevent]
+pub struct AdminAccepted {
+    pub new_admin: Address,
 }

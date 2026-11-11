@@ -50,10 +50,10 @@
                     },
                     {
                       "key": {
-                        "symbol": "email"
+                        "symbol": "email_hash"
                       },
                       "val": {
-                        "string": "contacto@fundacion.org"
+                        "bytes": "64756d6d795f656d61696c5f68617368"
                       }
                     },
                     {
@@ -77,7 +77,7 @@
                         "symbol": "rut_hash"
                       },
                       "val": {
-                        "bytes": "64756d6d795f68617368"
+                        "bytes": "64756d6d795f7275745f68617368"
                       }
                     },
                     {
@@ -213,10 +213,10 @@
                   },
                   {
                     "key": {
-                      "symbol": "email"
+                      "symbol": "email_hash"
                     },
                     "val": {
-                      "string": "contacto@fundacion.org"
+                      "bytes": "64756d6d795f656d61696c5f68617368"
                     }
                   },
                   {
@@ -240,7 +240,7 @@
                       "symbol": "rut_hash"
                     },
                     "val": {
-                      "bytes": "64756d6d795f68617368"
+                      "bytes": "64756d6d795f7275745f68617368"
                     }
                   },
                   {
@@ -305,7 +305,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 4095
+        "live_until": 1036800
       },
       {
         "entry": {
@@ -470,7 +470,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 4095
+        "live_until": 1036800
       },
       {
         "entry": {
