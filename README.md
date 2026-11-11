@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Testnet](https://img.shields.io/badge/Stellar-Testnet-blueviolet)](https://stellar.expert/explorer/testnet)
 
-Implementación de la visión de **Bitajon** para el ecosistema de **Stellar** y **Soroban**. Este repositorio contiene la infraestructura descentralizada para permitir a fundaciones y ONG's recaudar donaciones con trazabilidad absoluta y validación de impacto real.
+Implementación de la visión de **Bitajón** para el ecosistema de **Stellar** y **Soroban**. Este repositorio contiene la infraestructura descentralizada para permitir a fundaciones y ONG's recaudar donaciones con trazabilidad absoluta y validación de impacto real.
 
 ## 💡 El Modelo de Confianza (Hipótesis de Trabajo)
 
@@ -23,11 +23,12 @@ El flujo lógico que buscaremos implementar en nuestros contratos inteligentes e
 
 ## 🌐 Estado del Despliegue (Testnet)
 
-**Fecha del despliegue**: Noviembre 2026
-**Red**: Stellar Testnet (Protocolo 30 - Bell)
-**Estado**: ✅ Desplegado y verificado on-chain
-**Fee de plataforma**: `0 bps` (0% — intencional para el demo)
-**Bypass del fee**: ✅ Cerrado (`authorized_router` activado)
+- **Fecha del despliegue**: Noviembre de 2026
+- **Red**: Stellar Testnet (Protocolo 30 - Bell)
+- **Estado**: ✅ 5 contratos desplegados y verificados on-chain
+- **Fee de plataforma**: `0 bps` (0% — intencional para el demo)
+- **Bypass del fee**: ✅ Cerrado (`authorized_router` configurado)
+- **TTL**: ✅ Activo a largo plazo — extendido y verificado hasta ~**mediados de Diciembre de 2026** (5 Wasm + 5 instancias)
 
 ### 🔑 Cuenta de Despliegue y Administración
 
@@ -36,33 +37,49 @@ Todos los contratos comparten la misma cuenta como `admin`. Esta cuenta tiene au
 - Aprobar/revocar fundaciones en `nonprofit-registry`.
 - Configurar el `authorized_router` en `campaign-vault`.
 - Actualizar el `fee_bps` y `treasury` en `donation-router`.
+- Añadir/quitar signers del `governance-account` (multisig Ed25519).
 
 | Rol | Identidad CLI | Dirección Stellar |
 | :--- | :--- | :--- |
-| **Deployer + Admin** | `deployer` | `GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5` |
+| **Deployer + Admin** | `deployer` | [`GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5`](https://stellar.expert/explorer/testnet/account/GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5) |
 
 > ⚠️ **Seguridad**: La clave privada es...
 
 ### 📋 Contratos Desplegados
 
-| # | Contrato | Dirección (`C...`) | Propósito |
-| :--- | :--- | :--- | :--- |
-| 1 | **Nonprofit Registry** | `CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K` | Registro y aprobación de fundaciones. |
-| 2 | **Campaign Registry** | `CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR` | Metadatos de campañas. Valida contra el registro de nonprofits. |
-| 3 | **Campaign Vault** | `CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT` | Custodia de fondos y liberación por hitos (50/50). |
-| 4 | **Donation Router** | `CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD` | Punto de entrada único con fee de plataforma. |
+| # | Contrato | Dirección (`C...`) | Wasm Hash | Propósito |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | **Governance Account** | [`CCQ2VQX3QXE6OXXTVN77XTLKMWFUKW7HJAENIPEELVRIU7JSI2TT47BD`](https://stellar.expert/explorer/testnet/contract/CCQ2VQX3QXE6OXXTVN77XTLKMWFUKW7HJAENIPEELVRIU7JSI2TT47BD) | `f9d3c4d01aa062bb2dfaa36c5f2f7c8a0416e329ab02e5616f9a1c97f63787ee` | Smart account multisig Ed25519. Admin del protocolo. |
+| 2 | **Nonprofit Registry** | [`CAVXPFUWBQ3NCYFIP5TRPMHIOPVFU6QL6GKVHQDG5LAQVNRN6NIONKCY`](https://stellar.expert/explorer/testnet/contract/CAVXPFUWBQ3NCYFIP5TRPMHIOPVFU6QL6GKVHQDG5LAQVNRN6NIONKCY) | `36af4bd93b64e089e26a9c77708c22c5c18f8b4f67847d07df016bbf34df91db` | Registro y aprobación de fundaciones. |
+| 3 | **Campaign Registry** | [`CDMODZCKIUJDWFYKB3M3CI3MMUY6GXNENNRSM7EWKHHWLEP4IHFPT4VC`](https://stellar.expert/explorer/testnet/contract/CDMODZCKIUJDWFYKB3M3CI3MMUY6GXNENNRSM7EWKHHWLEP4IHFPT4VC) | `123719ea649069783c0ee396ee505042ee22e076f240d3a69e1881aa8cad0ea9` | Metadatos de campañas. Valida contra el registro de nonprofits. |
+| 4 | **Campaign Vault** | [`CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK`](https://stellar.expert/explorer/testnet/contract/CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK) | `f70947093aee0ba6e07b29dafaf9ee829124048e0a3eac3648e0d1585c558873` | Custodia de fondos y liberación por hitos. |
+| 5 | **Donation Router** | [`CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS`](https://stellar.expert/explorer/testnet/contract/CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS) | `9517dcf6f5ad9b0e76a9515e375f14c01c0ccb693d4a626130c77db5eb573780` | Punto de entrada único con fee de plataforma. |
 
-### 🔗 Transacciones de Despliegue (stellar.expert)
 
-Cada contrato tiene dos transacciones: la instalación del Wasm (upload) y el deploy con argumentos del constructor. Los links apuntan al deploy (el que importa para auditoría).
+### 📄 Archivo `.env.testnet.example`
 
-| Contrato | Wasm Hash | Tx de Deploy |
-| :--- | :--- | :--- |
-| **Nonprofit Registry** | `7376fe65dd8fa0611a2742a3cf4941c6a7dcc9b4578ac97c0f1b90c82a0703af` | [`138523ea...b1c7989`](https://stellar.expert/explorer/testnet/tx/138523eaeee800b82d5fd7704c0f0687f344d52257d1aa51fb7042635b1c7989) |
-| **Campaign Registry** | `484493887c7b87e6be9436d9036a58142be1be6c13dac78ea0fd81b55b2e65e9` | [`b2bcc54a...680d8457`](https://stellar.expert/explorer/testnet/tx/b2bcc54a8527338842b1d922bcc0a9ff25ca60200279f0ac0b0b17b4680d8457) |
-| **Campaign Vault** | `6ce4ac4e3c76a77f70e5c21b3550c1c5519505fca43b80e0739fbc13f68904d5` | [`b93a1906...036e2a`](https://stellar.expert/explorer/testnet/tx/b93a1906651782b0f242d9ccd97f97bcf1a5a701f7ca634e6e2a156aff036e2a) |
-| **Donation Router** | `bbcc1dbd99e15112dffc1f66ee49e7ad3f19fb60ad4feb934ae1724d5d24c356` | [`9ff27e27...d90d46dd`](https://stellar.expert/explorer/testnet/tx/9ff27e271e31fd7c201c9de79821221c5de85f99c59522c48442c7a9d90d46dd) |
 
+```bash
+# Bitajón contracts — deployed 2026-11-11T13:46:58.222Z
+# Network: testnet
+# Source: deployer (GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5)
+# Treasury: GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5
+# Fee: 0 bps
+
+GOVERNANCE_ID=CCQ2VQX3QXE6OXXTVN77XTLKMWFUKW7HJAENIPEELVRIU7JSI2TT47BD
+NP_ID=CAVXPFUWBQ3NCYFIP5TRPMHIOPVFU6QL6GKVHQDG5LAQVNRN6NIONKCY
+CR_ID=CDMODZCKIUJDWFYKB3M3CI3MMUY6GXNENNRSM7EWKHHWLEP4IHFPT4VC
+CV_ID=CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK
+DR_ID=CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS
+
+TREASURY=GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5
+FEE_BPS=0
+AUTHORIZED_ROUTER_CONFIGURED=yes
+```
+
+> ⚠️ Este archivo **no se commitea** (`.gitignore`). Si necesitás regenerarlo, corré `bun run bootstrap` en `contracts/scripts/` (o el equivalente con npm/pnpm/yarn).
+
+---
 
 ## 🚀 Quick Start
 
@@ -87,14 +104,14 @@ cd bitajon-stellar
 Este es un **monorepo**, lo que significa que convivirán diferentes tecnologías. Actualmente, el desarrollo se centra en la capa de contratos inteligentes, con los bindings ya generados para el frontend.
 
 ### 📦 Contracts (Rust + Soroban)
-La lógica de negocio (Escrow, Validación, Registro) vive aquí. Estamos utilizando **Rust** y el **Soroban SDK** para Stellar.
+La lógica de negocio (Escrow, Validación, Registro, Gobernanza) vive aquí. Estamos utilizando **Rust** y el **Soroban SDK** para Stellar.
 *   **Prerrequisitos:** Rust `1.84+` (estable), target `wasm32v1-none`, y Stellar CLI `30.0.1`.
 *   **Comandos básicos** (detalle completo en [`contracts/README.md`](./contracts/README.md)):
     *   `stellar contract build`
     *   `cargo test`
 
 ### 📦 Bindings (TypeScript)
-Los clientes tipados para los 4 contratos están en [`bindings/`](./bindings). El equipo de frontend los importa como paquetes NPM locales.
+Los clientes tipados para los **5 contratos** están en [`bindings/`](./bindings) (incluye `governance-account`). El equipo de frontend los importa como paquetes NPM locales.
 
 ### 💻 Frontend (Por definir)
 La interfaz de usuario (UI/UX) está inspirada en plataformas como *Vaki* (enfoque en "hacer florecer la confianza"). El stack tecnológico (Next.js, Vite, etc.) será definido por el equipo de frontend.
