@@ -1,15 +1,83 @@
-# 📡 Events Reference — Thriving Stellar
+# 📡 Events Reference — Bitajón
 
 > **Audiencia**: Equipos de frontend que necesiten indexar eventos on-chain, construir historial de campañas, o reaccionar en tiempo real a cambios de estado.
 > **Formato**: Todos los eventos son `#[contractevent]` y se publican con `publish(&env)`. Los campos `#[topic]` son índices de búsqueda eficientes.
+> **Estado**: v0.2.0 — Production-ready en Testnet. 5 contratos, 122 tests en verde.
 
 ---
 
-## 1. `nonprofit-registry`
+## 0. Mapa rápido por contrato
+
+| # | Contrato | Dirección (Testnet) | Eventos |
+| :--- | :--- | :--- | :--- |
+| 1 | `governance-account` | `CCQ2VQX3QXE6OXXTVN77XTLKMWFUKW7HJAENIPEELVRIU7JSI2TT47BD` | 4 |
+| 2 | `nonprofit-registry` | `CAVXPFUWBQ3NCYFIP5TRPMHIOPVFU6QL6GKVHQDG5LAQVNRN6NIONKCY` | 5 |
+| 3 | `campaign-registry` | `CDMODZCKIUJDWFYKB3M3CI3MMUY6GXNENNRSM7EWKHHWLEP4IHFPT4VC` | 4 |
+| 4 | `campaign-vault` | `CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK` | 12 |
+| 5 | `donation-router` | `CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS` | 5 |
+
+---
+
+## 1. `governance-account`
+
+Multisig Ed25519 con umbral dinámico. Los signers son pubkeys (`BytesN<32>`), no `Address` (ver `known-limitations.md` → E2).
+
+### `SignerAdded`
+
+**Emitido en**: `add_signer`.
+
+**Propósito**: Notificar que una nueva pubkey Ed25519 fue agregada al set de signers.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `signer` | `BytesN<32>` | ✅ | Pubkey Ed25519 del nuevo signer. |
+
+---
+
+### `SignerRemoved`
+
+**Emitido en**: `remove_signer`.
+
+**Propósito**: Notificar que un signer fue removido.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `signer` | `BytesN<32>` | ✅ | Pubkey Ed25519 del signer removido. |
+
+---
+
+### `ThresholdUpdated`
+
+**Emitido en**: `update_threshold`.
+
+**Propósito**: Notificar un cambio explícito en el threshold del multisig.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `old_threshold` | `u32` | ❌ | Threshold anterior. |
+| `new_threshold` | `u32` | ❌ | Threshold nuevo. |
+
+---
+
+### `ThresholdAutoAdjusted`
+
+**Emitido en**: `remove_signer` (cuando el threshold queda mayor que el nuevo conteo de signers).
+
+**Propósito**: Notificar que el threshold fue bajado automáticamente para mantener la cuenta usable. Solo se emite en el caso de auto-ajuste; un `update_threshold` explícito emite `ThresholdUpdated`.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `old_threshold` | `u32` | ❌ | Threshold anterior. |
+| `new_threshold` | `u32` | ❌ | Threshold ajustado (igual al nuevo `signers.len()`). |
+
+---
+
+## 2. `nonprofit-registry`
 
 ### `NonprofitRegistered`
 
 **Emitido en**: `register_nonprofit`.
+
 **Propósito**: Notificar que una fundación se registró en estado `Pending`.
 
 | Campo | Tipo | Topic | Descripción |
@@ -17,21 +85,13 @@
 | `nonprofit` | `Address` | ✅ | Dirección de la fundación. |
 | `legal_name` | `String` | ❌ | Razón social. |
 
-**Payload de ejemplo**:
-```json
-{
-  "type": "NonprofitRegistered",
-  "nonprofit": "GCER47...",
-  "legal_name": "Fundación Ejemplo"
-}
-```
-
 ---
 
 ### `NonprofitApproved`
 
 **Emitido en**: `approve_nonprofit`.
-**Propósito**: Notificar que una fundación fue aprobada y puede crear campañas.
+
+**Propósito**: Notificar que una fundación fue aprobada.
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
@@ -42,6 +102,7 @@
 ### `NonprofitRevoked`
 
 **Emitido en**: `revoke_nonprofit`.
+
 **Propósito**: Notificar que una fundación fue revocada.
 
 | Campo | Tipo | Topic | Descripción |
@@ -50,26 +111,52 @@
 
 ---
 
-## 2. `campaign-registry`
+### `AdminProposed`
+
+**Emitido en**: `propose_admin`.
+
+**Propósito**: Notificar una propuesta de cambio de admin (two-step transfer).
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `current` | `Address` | ❌ | Admin actual. |
+| `proposed` | `Address` | ❌ | Admin propuesto. |
+
+---
+
+### `AdminAccepted`
+
+**Emitido en**: `accept_admin`.
+
+**Propósito**: Notificar que el admin propuesto aceptó el rol.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `new_admin` | `Address` | ❌ | Nuevo admin. |
+
+---
+
+## 3. `campaign-registry`
 
 ### `CampaignCreated`
 
 **Emitido en**: `create_campaign`.
-**Propósito**: Notificar la creación de una campaña y su `campaign_id`.
+
+**Propósito**: Notificar la creación de una campaña.
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
 | `campaign_id` | `u64` | ✅ | ID de la campaña (monotónicamente creciente). |
 | `nonprofit` | `Address` | ❌ | Fundación dueña. |
 | `name` | `String` | ❌ | Nombre de la campaña. |
-| `target_amount` | `i128` | ❌ | Monto objetivo en **NET**. |
+| `target_amount` | `i128` | ❌ | Monto objetivo en **NET** (después de fee). |
 
 **Payload de ejemplo**:
 ```json
 {
   "type": "CampaignCreated",
   "campaign_id": 1,
-  "nonprofit": "GCER47...",
+  "nonprofit": "CAVXPF...",
   "name": "Comedor Comunitario",
   "target_amount": "100000000000"
 }
@@ -80,7 +167,8 @@
 ### `CampaignCancelled`
 
 **Emitido en**: `cancel_campaign`.
-**Propósito**: Notificar que una campaña fue cancelada por su dueño.
+
+**Propósito**: Notificar que una campaña fue cancelada.
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
@@ -89,11 +177,18 @@
 
 ---
 
-## 3. `campaign-vault`
+### `AdminProposed` / `AdminAccepted`
+
+Mismo formato que en `nonprofit-registry`. Ver §2.
+
+---
+
+## 4. `campaign-vault`
 
 ### `VaultCreated`
 
 **Emitido en**: `create_vault`.
+
 **Propósito**: Notificar que un vault fue creado para una campaña. A partir de este momento, la campaña acepta depósitos.
 
 | Campo | Tipo | Topic | Descripción |
@@ -101,13 +196,15 @@
 | `campaign_id` | `u64` | ✅ | ID de la campaña. |
 | `nonprofit` | `Address` | ❌ | Fundación dueña. |
 | `token_address` | `Address` | ❌ | SAC de la stablecoin usada. |
+| `verifier` | `Address` | ❌ | Dirección autorizada a validar evidencia y liberar el balance final. |
 
 ---
 
 ### `DonationDeposited`
 
 **Emitido en**: `deposit`.
-**Propósito**: Notificar un depósito individual. **No confundir** con `DonationRouted` (que es del router y representa la donación completa).
+
+**Propósito**: Notificar un depósito individual. **No confundir** con `DonationRouted` (que es del router y representa la donación completa desde la perspectiva del donante).
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
@@ -116,38 +213,29 @@
 | `amount` | `i128` | ❌ | Monto **NET** depositado (después del fee). |
 | `total_deposited` | `i128` | ❌ | Total acumulado en el vault tras este depósito. |
 
-**Payload de ejemplo**:
-```json
-{
-  "type": "DonationDeposited",
-  "campaign_id": 1,
-  "donor": "GDONOR...",
-  "amount": "49000000000",
-  "total_deposited": "49000000000"
-}
-```
-
 ---
 
 ### `InitialFundsReleased`
 
 **Emitido en**: `deposit` (cuando `total_deposited >= target_amount` y `!initial_release_done`).
-**Propósito**: Notificar que se liberó el 50% inicial a la fundación.
+
+**Propósito**: Notificar que se liberó el milestone inicial a la fundación.
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
 | `campaign_id` | `u64` | ✅ | ID de la campaña. |
 | `nonprofit` | `Address` | ❌ | Fundación que recibe los fondos. |
-| `amount` | `i128` | ❌ | Monto liberado (50% del target). |
+| `amount` | `i128` | ❌ | Monto liberado = `(target_amount * milestone_percentage) / 100`. |
 
-**Importante**: este evento se emite **junto con** el `DonationDeposited` que disparó la liberación. Si el frontend ve ambos, sabrá que la campaña cruzó el umbral de recaudación.
+**Importante**: este evento se emite **junto con** el `DonationDeposited` que disparó la liberación. El `amount` depende del `milestone_percentage` configurado en la campaña (1%..90%).
 
 ---
 
 ### `EvidenceSubmitted`
 
 **Emitido en**: `submit_evidence`.
-**Propósito**: Notificar que la fundación subió evidencia. Puede emitirse varias veces (sobrescritura intencional).
+
+**Propósito**: Notificar que la fundación subió evidencia. Puede emitirse varias veces (sobrescritura intencional, ver `known-limitations.md` → D2).
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
@@ -160,21 +248,76 @@
 ### `FinalFundsReleased`
 
 **Emitido en**: `release_final`.
-**Propósito**: Notificar que el admin liberó el 50% restante.
+
+**Propósito**: Notificar que el verifier liberó el balance restante.
 
 | Campo | Tipo | Topic | Descripción |
 | :--- | :--- | :--- | :--- |
 | `campaign_id` | `u64` | ✅ | ID de la campaña. |
 | `nonprofit` | `Address` | ❌ | Fundación que recibe los fondos. |
-| `amount` | `i128` | ❌ | Monto liberado (50% restante). |
+| `amount` | `i128` | ❌ | Monto liberado = `total_deposited - initial_release`. |
 
 **Estado final**: la campaña queda con `final_release_done = true`. Cualquier intento de deposit posterior falla con `VaultFinalized`.
+
+---
+
+### `RefundClaimed`
+
+**Emitido en**: `claim_refund`.
+
+**Propósito**: Notificar que un donante reclamó su refund tras expiración, cancelación, o pausa sin liberación inicial.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `campaign_id` | `u64` | ✅ | ID de la campaña. |
+| `donor` | `Address` | ❌ | Donante que reclama. |
+| `amount` | `i128` | ❌ | Monto reclamado (net contribution). |
+
+---
+
+### `VaultPaused`
+
+**Emitido en**: `pause_vault`.
+
+**Propósito**: Notificar que un vault fue pausado por el admin (freno de emergencia).
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `campaign_id` | `u64` | ✅ | ID de la campaña. |
+
+**Efecto**: bloquea `deposit` con `VaultPaused` (#32). `claim_refund` queda habilitado incluso sin expiración.
+
+---
+
+### `VaultUnpaused`
+
+**Emitido en**: `unpause_vault`.
+
+**Propósito**: Notificar que un vault fue despausado.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `campaign_id` | `u64` | ✅ | ID de la campaña. |
+
+---
+
+### `VerifierUpdated`
+
+**Emitido en**: `set_verifier_for_campaign`.
+
+**Propósito**: Notificar un cambio en el verifier de una campaña.
+
+| Campo | Tipo | Topic | Descripción |
+| :--- | :--- | :--- | :--- |
+| `campaign_id` | `u64` | ✅ | ID de la campaña. |
+| `new_verifier` | `Address` | ❌ | Nueva dirección autorizada a validar evidencia. |
 
 ---
 
 ### `AuthorizedRouterUpdated`
 
 **Emitido en**: `set_authorized_router`.
+
 **Propósito**: Notificar cambios en la configuración del `authorized_router` (modo abierto ↔ cerrado).
 
 | Campo | Tipo | Topic | Descripción |
@@ -185,17 +328,24 @@
 ```json
 {
   "type": "AuthorizedRouterUpdated",
-  "authorized_router": "CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD"
+  "authorized_router": "CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS"
 }
 ```
 
 ---
 
-## 4. `donation-router`
+### `AdminProposed` / `AdminAccepted`
+
+Mismo formato que en `nonprofit-registry`. Ver §2.
+
+---
+
+## 5. `donation-router`
 
 ### `DonationRouted`
 
 **Emitido en**: `donate`.
+
 **Propósito**: Notificar una donación completa (fee + net). **Este es el evento principal para el historial del donante**.
 
 | Campo | Tipo | Topic | Descripción |
@@ -225,6 +375,7 @@
 ### `FeeBpsUpdated`
 
 **Emitido en**: `update_fee_bps`.
+
 **Propósito**: Notificar cambios en el fee de plataforma.
 
 | Campo | Tipo | Topic | Descripción |
@@ -237,6 +388,7 @@
 ### `TreasuryUpdated`
 
 **Emitido en**: `update_treasury`.
+
 **Propósito**: Notificar cambios en la dirección de tesorería.
 
 | Campo | Tipo | Topic | Descripción |
@@ -246,9 +398,15 @@
 
 ---
 
-## 5. Cómo suscribirse a eventos
+### `AdminProposed` / `AdminAccepted`
 
-### 5.1. Vía `@stellar/stellar-sdk`
+Mismo formato que en `nonprofit-registry`. Ver §2.
+
+---
+
+## 6. Cómo suscribirse a eventos
+
+### 6.1. Vía `@stellar/stellar-sdk`
 
 ```typescript
 import { SorobanRpc, scValToNative } from '@stellar/stellar-sdk';
@@ -260,10 +418,8 @@ const events = await server.getEvents({
   filters: [
     {
       type: 'contract',
-      contractIds: [CV_ID],  // Filtrar por contrato
-      topics: [
-        ['*', '*'],  // (topic1, topic2) wildcards
-      ],
+      contractIds: [CV_ID],
+      topics: [['*', '*']],
     },
   ],
 });
@@ -275,12 +431,11 @@ for (const event of events.events) {
 }
 ```
 
-### 5.2. Filtrado por tipo de evento
+### 6.2. Filtrado por tipo de evento
 
-Los eventos tienen un primer topic con el nombre del struct (e.g., `DonationRouted`). Para filtrar:
+Los eventos tienen un primer topic con el nombre del struct. Para filtrar por `DonationRouted` del router:
 
 ```typescript
-// Filtrar solo DonationRouted del contrato del router
 const filters = [
   {
     type: 'contract',
@@ -292,37 +447,46 @@ const filters = [
 ];
 ```
 
-### 5.3. Recomendación de polling
+### 6.3. Recomendación de polling
 
 Soroban RPC no tiene websockets nativos (aún). El patrón recomendado:
 
 - Polling cada 5-10 segundos al `getEvents` con `startLedger = lastProcessedLedger`.
-- Cachear con TanStack Query y usar `refetchInterval`.
+- Cachear con TanStack Query y `refetchInterval`.
 - Para producción con alto volumen, considerar un indexer dedicado (Mercury, SubQuery, etc.).
 
 ---
 
-## 6. Mapa de Eventos por Flujo
+## 7. Mapa de Eventos por Flujo
 
 | Flujo | Eventos en orden |
 | :--- | :--- |
-| **Registro de fundación** | `NonprofitRegistered` → (aprobación admin) `NonprofitApproved` |
+| **Rotación de admin (cualquier contrato)** | `AdminProposed` → `AdminAccepted` |
+| **Rotación de signer (governance-account)** | `SignerAdded` / `SignerRemoved` → (opcional) `ThresholdUpdated` o `ThresholdAutoAdjusted` |
+| **Registro de fundación** | `NonprofitRegistered` → `NonprofitApproved` |
 | **Creación de campaña** | `CampaignCreated` → `VaultCreated` |
 | **Donación individual** | `DonationRouted` (router) → `DonationDeposited` (vault) |
 | **Primera donación que alcanza target** | `DonationRouted` → `DonationDeposited` → `InitialFundsReleased` |
 | **Subida de evidencia** | `EvidenceSubmitted` |
 | **Liberación final** | `FinalFundsReleased` |
-| **Cancelación** | `CampaignCancelled` |
+| **Refund por expiración / cancelación / pausa** | `RefundClaimed` |
+| **Freno de emergencia** | `VaultPaused` / `VaultUnpaused` |
+| **Rotación de verifier** | `VerifierUpdated` |
+| **Cancelación de campaña** | `CampaignCancelled` |
 | **Cambio de fee** | `FeeBpsUpdated` |
 | **Cambio de tesorería** | `TreasuryUpdated` |
-| **Modo abierto/cerrado** | `AuthorizedRouterUpdated` |
+| **Modo abierto/cerrado del router** | `AuthorizedRouterUpdated` |
 
 ---
 
-## 7. Buenas Prácticas
+## 8. Buenas Prácticas
 
-1. **No asumir orden entre contratos**: los eventos de `donation-router` y `campaign-vault` se emiten en la misma transacción. El frontend debe agruparlos por `txHash` si necesita correlación.
-2. **Filtrar por `contractId`**: cada contrato emite sus propios eventos. Filtrar por la dirección del contrato correcto evita ruido.
+1. **No asumir orden entre contratos**: los eventos de `donation-router` y `campaign-vault` se emiten en la misma transacción. Agrupar por `txHash` si se necesita correlación.
+2. **Filtrar por `contractId`**: cada contrato emite sus propios eventos.
 3. **Persistir el último `ledger` procesado**: para no re-procesar eventos duplicados.
-4. **Usar `topics` para queries eficientes**: los campos `#[topic]` (e.g., `campaign_id`) son ideales para filtrar.
-5. **Manejar reorgs**: aunque Stellar tiene finalidad rápida (~5s), considera un buffer de 1-2 ledgers antes de mostrar el evento como "final".
+4. **Usar `topics` para queries eficientes**: los campos `#[topic]` son ideales para filtrar.
+5. **Manejar reorgs**: aunque Stellar tiene finalidad rápida (~5s), considerar un buffer de 1-2 ledgers antes de mostrar un evento como "final".
+6. **Diferenciar `DonationRouted` de `DonationDeposited`**: el primero es la vista del donante (gross + fee + net); el segundo es la vista del vault (net acumulado).
+7. **`RefundClaimed` es por donante y por campaña**: si un donante reclama refunds de múltiples campañas, verá múltiples eventos.
+8. **`ThresholdAutoAdjusted` vs `ThresholdUpdated`**: si el evento es `ThresholdAutoAdjusted`, el admin no lo pidió explícitamente — fue una consecuencia de remover un signer. Si es `ThresholdUpdated`, el admin lo decidió.
+
