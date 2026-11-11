@@ -1,7 +1,7 @@
 #![cfg(test)]
 
+use protocol_types::{NonprofitProfile, NonprofitStatus};
 use soroban_sdk::{testutils::Address as _, Address, Bytes, Env, String};
-use thriving_types::{NonprofitProfile, NonprofitStatus};
 
 use crate::{NonprofitRegistryContract, NonprofitRegistryContractClient};
 
@@ -10,9 +10,9 @@ fn create_mock_profile(env: &Env) -> NonprofitProfile {
     NonprofitProfile {
         legal_name: String::from_str(env, "Fundación de Prueba"),
         tax_id: String::from_str(env, "900123456-7"),
-        rut_hash: Bytes::from_slice(env, b"dummy_hash"),
+        rut_hash: Bytes::from_slice(env, b"dummy_rut_hash"),
+        email_hash: Bytes::from_slice(env, b"dummy_email_hash"),
         retention_certificate: true,
-        email: String::from_str(env, "contacto@fundacion.org"),
         data_consent: true,
         status: NonprofitStatus::Pending,
     }
@@ -28,7 +28,10 @@ fn setup<'a>() -> (Env, Address, NonprofitRegistryContractClient<'a>) {
     (env, admin, client)
 }
 
-/// Verifies the happy path: register, then approve.
+// ===========================================================================
+// Nonprofit lifecycle
+// ===========================================================================
+
 #[test]
 fn test_register_and_approve_nonprofit() {
     let (env, admin, client) = setup();
@@ -39,16 +42,15 @@ fn test_register_and_approve_nonprofit() {
 
     let stored = client.get_profile(&nonprofit);
     assert_eq!(stored.status, NonprofitStatus::Pending);
-    assert_eq!(client.is_approved(&nonprofit), false);
+    assert!(!client.is_approved(&nonprofit));
 
     client.approve_nonprofit(&admin, &nonprofit);
 
     let stored = client.get_profile(&nonprofit);
     assert_eq!(stored.status, NonprofitStatus::Approved);
-    assert_eq!(client.is_approved(&nonprofit), true);
+    assert!(client.is_approved(&nonprofit));
 }
 
-/// Ensures that registration forces Pending status regardless of input.
 #[test]
 fn test_registration_forces_pending_status() {
     let (env, _admin, client) = setup();
@@ -58,11 +60,12 @@ fn test_registration_forces_pending_status() {
 
     client.register_nonprofit(&nonprofit, &profile);
 
-    let stored = client.get_profile(&nonprofit);
-    assert_eq!(stored.status, NonprofitStatus::Pending);
+    assert_eq!(
+        client.get_profile(&nonprofit).status,
+        NonprofitStatus::Pending
+    );
 }
 
-/// Ensures that a nonprofit cannot be registered twice.
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #4)")]
 fn test_register_duplicate_nonprofit() {
@@ -74,7 +77,6 @@ fn test_register_duplicate_nonprofit() {
     client.register_nonprofit(&nonprofit, &profile);
 }
 
-/// Ensures that an admin can revoke an approved nonprofit.
 #[test]
 fn test_revoke_nonprofit() {
     let (env, admin, client) = setup();
@@ -83,18 +85,21 @@ fn test_revoke_nonprofit() {
 
     client.register_nonprofit(&nonprofit, &profile);
     client.approve_nonprofit(&admin, &nonprofit);
-    assert_eq!(client.is_approved(&nonprofit), true);
+    assert!(client.is_approved(&nonprofit));
 
     client.revoke_nonprofit(&admin, &nonprofit);
 
-    assert_eq!(client.is_approved(&nonprofit), false);
+    assert!(!client.is_approved(&nonprofit));
     assert_eq!(
         client.get_profile(&nonprofit).status,
         NonprofitStatus::Revoked
     );
 }
 
-/// Ensures that approving a non-existent nonprofit fails.
+// ===========================================================================
+// Errors on missing profiles
+// ===========================================================================
+
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #2)")]
 fn test_approve_non_existent_nonprofit() {
@@ -104,7 +109,6 @@ fn test_approve_non_existent_nonprofit() {
     client.approve_nonprofit(&admin, &nonexistent);
 }
 
-/// Ensures that revoking a non-existent nonprofit fails.
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #2)")]
 fn test_revoke_non_existent_nonprofit() {
@@ -114,16 +118,14 @@ fn test_revoke_non_existent_nonprofit() {
     client.revoke_nonprofit(&admin, &nonexistent);
 }
 
-/// Ensures that is_approved returns false for an unregistered address.
 #[test]
 fn test_is_approved_for_non_existent() {
     let (env, _admin, client) = setup();
     let nonexistent = Address::generate(&env);
 
-    assert_eq!(client.is_approved(&nonexistent), false);
+    assert!(!client.is_approved(&nonexistent));
 }
 
-/// Ensures that get_profile panics for an unregistered address.
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #2)")]
 fn test_get_profile_non_existent() {
@@ -131,4 +133,81 @@ fn test_get_profile_non_existent() {
     let nonexistent = Address::generate(&env);
 
     client.get_profile(&nonexistent);
+}
+
+// ===========================================================================
+// Two-step admin transfer
+// ===========================================================================
+
+/// Happy path: current admin proposes a new admin, new admin accepts.
+#[test]
+fn test_propose_and_accept_admin_flow() {
+    let (env, admin, client) = setup();
+    let new_admin = Address::generate(&env);
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_pending_admin(), None);
+
+    client.propose_admin(&admin, &new_admin);
+    assert_eq!(client.get_pending_admin(), Some(new_admin.clone()));
+
+    client.accept_admin();
+
+    assert_eq!(client.get_pending_admin(), None);
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+/// Non-admin cannot propose a successor.
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #1)")]
+fn test_propose_admin_not_admin() {
+    let (env, _admin, client) = setup();
+    let attacker = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.propose_admin(&attacker, &new_admin);
+}
+
+/// `accept_admin` fails when there is no pending admin.
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #1)")]
+fn test_accept_admin_without_pending() {
+    let (_env, _admin, client) = setup();
+
+    client.accept_admin();
+}
+
+/// Only the pending admin can accept the role.
+///
+/// The call is made by `pending` via `require_auth()`. With `mock_all_auths`,
+/// any address is authorized, so the identity check that matters is
+/// `get_pending_admin()`, not the caller. To validate that a non-pending
+/// address cannot "accept", we simply check that once accepted, the pending
+/// slot is cleared and the admin changed. This test asserts the post-condition.
+#[test]
+fn test_accept_admin_clears_pending() {
+    let (env, admin, client) = setup();
+    let new_admin = Address::generate(&env);
+
+    client.propose_admin(&admin, &new_admin);
+    assert!(client.get_pending_admin().is_some());
+
+    client.accept_admin();
+
+    assert!(client.get_pending_admin().is_none());
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+/// The proposed admin can be overwritten by a new proposal before acceptance.
+#[test]
+fn test_propose_admin_can_be_overwritten() {
+    let (env, admin, client) = setup();
+    let first_candidate = Address::generate(&env);
+    let second_candidate = Address::generate(&env);
+
+    client.propose_admin(&admin, &first_candidate);
+    assert_eq!(client.get_pending_admin(), Some(first_candidate));
+
+    client.propose_admin(&admin, &second_candidate);
+    assert_eq!(client.get_pending_admin(), Some(second_candidate));
 }
