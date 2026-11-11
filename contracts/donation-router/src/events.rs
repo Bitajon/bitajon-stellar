@@ -24,3 +24,16 @@ pub struct TreasuryUpdated {
     pub old_treasury: Address,
     pub new_treasury: Address,
 }
+
+/// Emitted when the current admin proposes a successor.
+#[contractevent]
+pub struct AdminProposed {
+    pub current: Address,
+    pub proposed: Address,
+}
+
+/// Emitted when the proposed admin accepts the role.
+#[contractevent]
+pub struct AdminAccepted {
+    pub new_admin: Address,
+}

@@ -1,62 +1,89 @@
 #![no_std]
 
-//! Donation Router Contract
+//! Donation Router — Atomic orchestrator for donations.
 //!
-//! Single entry point for donations in the Thriving Stellar ecosystem.
-//! This contract abstracts the campaign vault from the frontend and applies
-//! the platform fee (Model B: fee is deducted from the donation, not added
-//! on top).
+//! Single entry point for donations in the Bitajón protocol. In one
+//! transaction (one signature from the donor), this contract:
+//!
+//! 1. Computes the platform fee and the net amount.
+//! 2. Transfers the fee to the treasury (if `fee_bps > 0`).
+//! 3. Forwards the net amount to the campaign's vault via
+//!    `CampaignVaultClient::deposit`.
+//! 4. The vault auto-releases the initial milestone if the deposit
+//!    crosses `target_amount`.
+//!
+//! **Atomicity**: If any step fails (invalid campaign, deadline expired,
+//! deposit exceeds target, vault paused, etc.), the entire transaction
+//! reverts, including the fee transfer. The donor pays only the network
+//! cost of the failed transaction, not a partial donation.
 //!
 //! # Fee Model
 //!
-//! Given a gross donation `A` and a fee of `F` basis points (1 bps = 0.01%):
+//! Gross-based, deducted from the donor's payment:
 //!
 //! ```text
-//! fee_amount = (A * F) / 10_000   // integer division
-//! net_amount = A - fee_amount
+//! fee_amount = (gross_amount * fee_bps) / 10_000
+//! net_amount = gross_amount - fee_amount
 //! ```
 //!
-//! The donor pays `A`. The treasury receives `fee_amount`. The vault receives
-//! `net_amount`. Campaign targets in `campaign-registry` are expressed in
-//! **net** terms: a campaign with `target_amount = 10_000` and `fee_bps = 200`
-//! requires the donor to pay `10_204` for the vault to reach its target. The
-//! frontend MUST display the gross, fee, and net amounts to the donor.
+//! The donor pays `gross_amount`. The treasury receives `fee_amount`. The
+//! vault receives `net_amount`.
+//!
+//! **`target_amount` is expressed in NET terms.** A campaign with
+//! `target_amount = 10_000` and `fee_bps = 200` requires a gross payment
+//! of `ceil(10_000 * 10_000 / 9_800) = 10_204` to reach the target.
+//! The frontend must compute the gross amount from the campaign target
+//! and display the fee breakdown via `quote()`.
 //!
 //! # Roles
-//! * **Admin**: Configures `fee_bps` and `treasury`.
+//!
+//! * **Admin**: Configures fee, treasury, and pending admin. Can be an
+//!   EOA (`G...`) or a `governance-account` (`C...`).
 //! * **Treasury**: Receives platform fees.
-//! * **Donor**: Authorizes the donation and pays both the fee and the net amount.
+//! * **Donor**: Authorizes the transaction and pays the gross amount.
+//!
+//! # Standards
+//!
+//! * **SEP-41**: The vault's donation token is a SEP-41 token. The router
+//!   reads `token_address` from the vault state and uses it for the fee
+//!   transfer, so it is agnostic to the specific token.
+//! * **SEP-45 (planned)**: The admin can be a smart account that
+//!   authenticates via SEP-45. This contract only requires
+//!   `Address::require_auth()`, which works transparently for both EOAs
+//!   and smart accounts.
+//! * **SEP-24 / SEP-6 (frontend)**: On-ramps (COP → USDC) are handled by
+//!   Anchors (VANK, Pollar) and orchestrated by the frontend. This
+//!   contract only sees the resulting USDC transfer.
+//! * **SEP-38 (frontend)**: Anchor quotes for fiat/crypto conversion are
+//!   consumed by the frontend, not by this contract.
 //!
 //! # Security
-//! * All state-mutating functions require authorization.
-//! * The router is stateless per-donation: no CEI concerns.
-//! * Fee is bounded by `MAX_FEE_BPS` (10%) at construction and update time.
-//! * TTL is extended on all entry points.
 //!
-//! # Known MVP Limitations
-//! * **Direct vault bypass**: A user who knows the vault's contract address
-//!   and a campaign ID can call `vault.deposit()` directly, bypassing the
-//!   platform fee. Mitigation for production: add an `authorized_router`
-//!   configuration to the vault that, when set, requires the router's
-//!   authorization on every deposit. Not implemented in the MVP.
-//! * **No humanity proof**: Any address can donate. Post-MVP, a `donate_with_proof`
-//!   variant can require an off-chain attestation (inspired by p2p.me).
+//! * CEI pattern followed: state changes happen before external calls.
+//! * Router bypass is closed at the vault level: when
+//!   `authorized_router` is configured on the vault, direct deposits
+//!   from arbitrary addresses are rejected. This contract is the only
+//!   authorized router and therefore the only path that collects fees.
+//! * Fee is bounded by `MAX_FEE_BPS` (10%) at construction and update.
+//! * Two-step admin transfer prevents accidental lockout.
+//! * Instance TTL extended on every entry point.
 
 mod events;
 mod storage;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, token, Address, Env,
-};
-use thriving_interfaces::CampaignVaultClient;
-use thriving_types::{Error, MAX_FEE_BPS};
+use protocol_interfaces::CampaignVaultClient;
+use protocol_types::{Error, MAX_FEE_BPS};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, token, Address, Env};
 
-use crate::events::{DonationRouted, FeeBpsUpdated, TreasuryUpdated};
+use crate::events::{
+    AdminAccepted, AdminProposed, DonationRouted, FeeBpsUpdated, TreasuryUpdated,
+};
 use crate::storage::{
-    extend_instance_ttl, read_admin, read_campaign_vault, read_fee_bps, read_treasury,
-    write_admin, write_campaign_vault, write_fee_bps, write_treasury,
+    clear_pending_admin, extend_instance_ttl, get_admin, get_campaign_vault, get_fee_bps,
+    get_pending_admin, get_treasury, set_admin, set_campaign_vault, set_fee_bps,
+    set_pending_admin, set_treasury,
 };
 
 /// Result of a fee quote, returned by `quote`.
@@ -68,19 +95,19 @@ pub struct QuoteResult {
     pub net_amount: i128,
 }
 
-/// The main contract struct for the Donation Router.
 #[contract]
 pub struct DonationRouterContract;
 
 #[contractimpl]
 impl DonationRouterContract {
-    /// Initializes the router with admin, treasury, vault, and fee configuration.
+    /// Initializes the router with admin, treasury, vault, and fee.
     ///
     /// # Arguments
-    /// * `admin` - The address authorized to update fee and treasury.
-    /// * `treasury` - The address that receives platform fees.
-    /// * `campaign_vault` - The address of the `campaign-vault` contract.
-    /// * `fee_bps` - Initial fee in basis points. Must be <= `MAX_FEE_BPS`.
+    /// * `admin` - Address authorized to configure the router. Can be an
+    ///   EOA or a `governance-account`.
+    /// * `treasury` - Address that receives platform fees.
+    /// * `campaign_vault` - Address of the Campaign Vault contract.
+    /// * `fee_bps` - Initial fee in basis points. Must be `<= MAX_FEE_BPS`.
     ///
     /// # Errors
     /// * `Unauthorized` if the contract has already been initialized.
@@ -92,39 +119,174 @@ impl DonationRouterContract {
         campaign_vault: Address,
         fee_bps: u32,
     ) {
-        if read_admin(&env).is_some() {
+        if get_admin(&env).is_some() {
             panic_with_error!(&env, Error::Unauthorized);
         }
         if fee_bps > MAX_FEE_BPS {
             panic_with_error!(&env, Error::InvalidFeeBps);
         }
-        write_admin(&env, &admin);
-        write_treasury(&env, &treasury);
-        write_campaign_vault(&env, &campaign_vault);
-        write_fee_bps(&env, fee_bps);
+        set_admin(&env, &admin);
+        set_treasury(&env, &treasury);
+        set_campaign_vault(&env, &campaign_vault);
+        set_fee_bps(&env, fee_bps);
     }
 
-    /// Routes a donation through the platform.
+    // --- Two-step admin transfer ---
+
+    /// Proposes a new admin. Must be accepted by the proposed admin.
+    ///
+    /// # Authorization
+    /// Only the current admin can propose.
+    ///
+    /// # Errors
+    /// * `Unauthorized` if the caller is not the current admin.
+    pub fn propose_admin(env: Env, admin: Address, new_admin: Address) {
+        extend_instance_ttl(&env);
+        admin.require_auth();
+        let stored =
+            get_admin(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        if admin != stored {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        set_pending_admin(&env, &new_admin);
+        AdminProposed {
+            current: admin,
+            proposed: new_admin,
+        }
+        .publish(&env);
+    }
+
+    /// Accepts the pending admin role.
+    ///
+    /// # Authorization
+    /// Only the pending admin can accept.
+    ///
+    /// # Errors
+    /// * `Unauthorized` if there is no pending admin.
+    pub fn accept_admin(env: Env) {
+        extend_instance_ttl(&env);
+        let pending = get_pending_admin(&env)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        pending.require_auth();
+        set_admin(&env, &pending);
+        clear_pending_admin(&env);
+        AdminAccepted { new_admin: pending }.publish(&env);
+    }
+
+    /// Returns the current admin.
+    pub fn get_admin(env: Env) -> Address {
+        get_admin(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized))
+    }
+
+    /// Returns the pending admin, if any.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        get_pending_admin(&env)
+    }
+
+    // --- Configuration ---
+
+    /// Updates the platform fee.
+    ///
+    /// # Authorization
+    /// Only the admin can update the fee.
+    ///
+    /// # Errors
+    /// * `Unauthorized` if the caller is not the admin.
+    /// * `InvalidFeeBps` if `new_fee_bps > MAX_FEE_BPS`.
+    pub fn update_fee_bps(env: Env, admin: Address, new_fee_bps: u32) {
+        extend_instance_ttl(&env);
+        admin.require_auth();
+        let stored =
+            get_admin(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        if admin != stored {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        if new_fee_bps > MAX_FEE_BPS {
+            panic_with_error!(&env, Error::InvalidFeeBps);
+        }
+        let old_fee_bps = get_fee_bps(&env);
+        set_fee_bps(&env, new_fee_bps);
+        FeeBpsUpdated {
+            old_fee_bps,
+            new_fee_bps,
+        }
+        .publish(&env);
+    }
+
+    /// Updates the treasury address.
+    ///
+    /// # Authorization
+    /// Only the admin can update the treasury.
+    ///
+    /// # Errors
+    /// * `Unauthorized` if the caller is not the admin.
+    pub fn update_treasury(env: Env, admin: Address, new_treasury: Address) {
+        extend_instance_ttl(&env);
+        admin.require_auth();
+        let stored =
+            get_admin(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        if admin != stored {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        let old_treasury =
+            get_treasury(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        set_treasury(&env, &new_treasury);
+        TreasuryUpdated {
+            old_treasury,
+            new_treasury,
+        }
+        .publish(&env);
+    }
+
+    /// Returns the current fee in basis points.
+    pub fn get_fee_bps(env: Env) -> u32 {
+        extend_instance_ttl(&env);
+        get_fee_bps(&env)
+    }
+
+    /// Returns the current treasury address.
+    pub fn get_treasury(env: Env) -> Address {
+        extend_instance_ttl(&env);
+        get_treasury(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized))
+    }
+
+    /// Returns the Campaign Vault address.
+    pub fn get_campaign_vault(env: Env) -> Address {
+        extend_instance_ttl(&env);
+        get_campaign_vault(&env).unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized))
+    }
+
+    // --- Atomic donation ---
+
+    /// Routes a donation through the platform in a single atomic transaction.
+    ///
+    /// # Atomicity
+    /// The fee transfer and the vault deposit happen in the same
+    /// transaction. If either fails, the entire transaction reverts
+    /// (Soroban protocol-level atomicity). The donor is never partially
+    /// charged.
     ///
     /// # Flow
-    /// 1. Compute `fee_amount = gross * fee_bps / 10_000` and `net_amount = gross - fee`.
-    /// 2. If `fee_amount > 0`, transfer the fee from `donor` to `treasury`.
-    ///    The token address is read from the vault's cached state.
-    /// 3. Forward `net_amount` to the vault via `vault.deposit(campaign_id, donor, net)`.
+    /// 1. Compute `fee_amount = gross * fee_bps / 10_000` and
+    ///    `net_amount = gross - fee_amount`.
+    /// 2. If `fee_amount > 0`, read the vault state to get the token, then
+    ///    transfer the fee from `donor` to `treasury`. If the fee is zero,
+    ///    skip the read (optimization for the current deployment where
+    ///    `fee_bps = 0`).
+    /// 3. Call `vault.deposit(campaign_id, donor, net_amount)`. The vault
+    ///    validates the campaign, transfers the net amount, and releases
+    ///    the initial milestone if the target is reached.
     ///
-    /// Atomicity: if any step fails, the entire transaction reverts and no
-    /// funds move.
-    ///
-    /// # Arguments
-    /// * `campaign_id` - The ID of the campaign.
-    /// * `donor` - The address authorizing and paying for the donation.
-    /// * `amount` - The gross amount to donate (fee is deducted from this).
+    /// # Authorization
+    /// * `donor` must authorize this call.
+    /// * If the vault has `authorized_router` configured, this router must
+    ///   be that address (it is, by definition).
     ///
     /// # Errors
     /// * `InvalidAmount` if `amount <= 0`.
-    /// * `Unauthorized` if the router has not been initialized with a vault.
-    /// * All vault-side errors propagate unchanged (e.g. `CampaignNotFound`,
-    ///   `CampaignExpired`, `DepositExceedsTarget`, `VaultFinalized`).
+    /// * Vault errors propagate unchanged: `CampaignNotFound`,
+    ///   `CampaignExpired`, `DepositExceedsTarget`, `VaultPaused`,
+    ///   `VaultFinalized`.
     pub fn donate(env: Env, campaign_id: u64, donor: Address, amount: i128) {
         extend_instance_ttl(&env);
         donor.require_auth();
@@ -133,30 +295,31 @@ impl DonationRouterContract {
             panic_with_error!(&env, Error::InvalidAmount);
         }
 
-        let fee_bps = read_fee_bps(&env);
+        let fee_bps = get_fee_bps(&env);
         let fee_amount = (amount * fee_bps as i128) / 10_000;
         let net_amount = amount - fee_amount;
 
-        // Defensive assertion: with MAX_FEE_BPS = 1000 (10%) and amount >= 1,
-        // net_amount is always >= 1. Future changes to the cap must revisit this.
         if net_amount <= 0 {
             panic_with_error!(&env, Error::InvalidAmount);
         }
 
-        let vault_address = read_campaign_vault(&env)
+        let vault_address = get_campaign_vault(&env)
             .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
         let vault_client = CampaignVaultClient::new(&env, &vault_address);
 
-        // Only resolve the token address when a fee must be transferred.
+        // Charge the fee first (when non-zero). This avoids an unnecessary
+        // cross-contract read of the vault state when the platform fee is
+        // disabled, which is the current deployment configuration.
         if fee_amount > 0 {
             let vault_state = vault_client.get_vault(&campaign_id);
             let token_client = token::Client::new(&env, &vault_state.token_address);
-            let treasury = read_treasury(&env)
+            let treasury = get_treasury(&env)
                 .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
             token_client.transfer(&donor, &treasury, &fee_amount);
         }
 
-        // Forward the net amount. Propagates vault-side errors unchanged.
+        // Forward the net amount. Atomic with the fee transfer above: if
+        // the vault rejects the deposit, the whole transaction reverts.
         vault_client.deposit(&campaign_id, &donor, &net_amount);
 
         DonationRouted {
@@ -178,7 +341,7 @@ impl DonationRouterContract {
     /// # Returns
     /// A `QuoteResult` with `gross_amount`, `fee_amount`, and `net_amount`.
     pub fn quote(env: Env, gross_amount: i128) -> QuoteResult {
-        let fee_bps = read_fee_bps(&env);
+        let fee_bps = get_fee_bps(&env);
         let fee_amount = if gross_amount > 0 {
             (gross_amount * fee_bps as i128) / 10_000
         } else {
@@ -190,80 +353,5 @@ impl DonationRouterContract {
             fee_amount,
             net_amount,
         }
-    }
-
-    /// Updates the platform fee. Only callable by the admin.
-    ///
-    /// # Arguments
-    /// * `admin` - The admin address (must authorize).
-    /// * `new_fee_bps` - The new fee in basis points. Must be <= `MAX_FEE_BPS`.
-    ///
-    /// # Errors
-    /// * `Unauthorized` if the caller is not the admin.
-    /// * `InvalidFeeBps` if `new_fee_bps > MAX_FEE_BPS`.
-    pub fn update_fee_bps(env: Env, admin: Address, new_fee_bps: u32) {
-        extend_instance_ttl(&env);
-        admin.require_auth();
-
-        let stored_admin = read_admin(&env)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
-        if admin != stored_admin {
-            panic_with_error!(&env, Error::Unauthorized);
-        }
-        if new_fee_bps > MAX_FEE_BPS {
-            panic_with_error!(&env, Error::InvalidFeeBps);
-        }
-
-        let old_fee_bps = read_fee_bps(&env);
-        write_fee_bps(&env, new_fee_bps);
-
-        FeeBpsUpdated {
-            old_fee_bps,
-            new_fee_bps,
-        }
-        .publish(&env);
-    }
-
-    /// Updates the treasury address. Only callable by the admin.
-    ///
-    /// # Arguments
-    /// * `admin` - The admin address (must authorize).
-    /// * `new_treasury` - The new treasury address.
-    ///
-    /// # Errors
-    /// * `Unauthorized` if the caller is not the admin.
-    pub fn update_treasury(env: Env, admin: Address, new_treasury: Address) {
-        extend_instance_ttl(&env);
-        admin.require_auth();
-
-        let stored_admin = read_admin(&env)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
-        if admin != stored_admin {
-            panic_with_error!(&env, Error::Unauthorized);
-        }
-
-        let old_treasury = read_treasury(&env)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
-        write_treasury(&env, &new_treasury);
-
-        TreasuryUpdated {
-            old_treasury,
-            new_treasury,
-        }
-        .publish(&env);
-    }
-
-    /// Returns the current fee in basis points.
-    pub fn get_fee_bps(env: Env) -> u32 {
-        read_fee_bps(&env)
-    }
-
-    /// Returns the current treasury address.
-    ///
-    /// # Errors
-    /// * `Unauthorized` if the contract has not been initialized.
-    pub fn get_treasury(env: Env) -> Address {
-        read_treasury(&env)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized))
     }
 }

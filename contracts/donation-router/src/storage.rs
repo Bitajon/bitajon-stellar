@@ -1,59 +1,79 @@
 use soroban_sdk::{contracttype, Address, Env};
 
-/// Storage keys for the Donation Router contract.
+/// Storage keys for the Donation Router.
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// The admin address authorized to update fee and treasury.
+    /// Current admin. Can be an EOA (`G...`) or a smart account (`C...`).
     Admin,
-    /// The treasury address where platform fees are routed.
+    /// Address proposed as the next admin (pending acceptance).
+    PendingAdmin,
+    /// Treasury address that receives platform fees.
     Treasury,
     /// Platform fee in basis points (1 bps = 0.01%).
     FeeBps,
-    /// The address of the Campaign Vault contract.
+    /// Address of the Campaign Vault contract.
     CampaignVault,
 }
 
-const INSTANCE_TTL_THRESHOLD: u32 = 518_400;
-const INSTANCE_TTL_EXTEND_TO: u32 = 1_036_800;
+const INSTANCE_TTL_THRESHOLD: u32 = 518_400; // ~30 days
+const INSTANCE_TTL_EXTEND_TO: u32 = 1_036_800; // ~60 days
 
+/// Extends the contract instance TTL to prevent archival during quiet periods.
 pub fn extend_instance_ttl(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
 }
 
-pub fn write_admin(env: &Env, admin: &Address) {
+// --- Admin management ---
+
+pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
 
-pub fn read_admin(env: &Env) -> Option<Address> {
+pub fn get_admin(env: &Env) -> Option<Address> {
     env.storage().instance().get(&DataKey::Admin)
 }
 
-pub fn write_treasury(env: &Env, treasury: &Address) {
+pub fn set_pending_admin(env: &Env, admin: &Address) {
+    env.storage().instance().set(&DataKey::PendingAdmin, admin);
+}
+
+pub fn get_pending_admin(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::PendingAdmin)
+}
+
+pub fn clear_pending_admin(env: &Env) {
+    env.storage().instance().remove(&DataKey::PendingAdmin);
+}
+
+// --- Treasury ---
+
+pub fn set_treasury(env: &Env, treasury: &Address) {
     env.storage().instance().set(&DataKey::Treasury, treasury);
 }
 
-pub fn read_treasury(env: &Env) -> Option<Address> {
+pub fn get_treasury(env: &Env) -> Option<Address> {
     env.storage().instance().get(&DataKey::Treasury)
 }
 
-pub fn write_fee_bps(env: &Env, fee_bps: u32) {
+// --- Fee ---
+
+pub fn set_fee_bps(env: &Env, fee_bps: u32) {
     env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
 }
 
-pub fn read_fee_bps(env: &Env) -> u32 {
-    env.storage()
-        .instance()
-        .get(&DataKey::FeeBps)
-        .unwrap_or(0)
+pub fn get_fee_bps(env: &Env) -> u32 {
+    env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0)
 }
 
-pub fn write_campaign_vault(env: &Env, vault: &Address) {
+// --- Campaign Vault ---
+
+pub fn set_campaign_vault(env: &Env, vault: &Address) {
     env.storage().instance().set(&DataKey::CampaignVault, vault);
 }
 
-pub fn read_campaign_vault(env: &Env) -> Option<Address> {
+pub fn get_campaign_vault(env: &Env) -> Option<Address> {
     env.storage().instance().get(&DataKey::CampaignVault)
 }
