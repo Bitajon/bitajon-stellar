@@ -863,6 +863,7 @@ dependencies = [
 name = "governance-account"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
  "nonprofit-registry",
  "protocol-types",
  "soroban-sdk",
