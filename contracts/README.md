@@ -1,41 +1,44 @@
-# 📦 Contracts — Thriving Stellar
+# 📦 Contracts — Bitajón
 
-Este directorio contiene la capa de contratos inteligentes de **Thriving Stellar**, implementada en **Rust** sobre **Soroban**, la plataforma de smart contracts de la red **Stellar**.
+Este directorio contiene la capa de contratos inteligentes de **Bitajón**, implementada en **Rust** sobre **Soroban**, la plataforma de smart contracts de la red **Stellar**.
 
-La misión de esta capa es materializar el **Modelo de Confianza** de ThrivingHub: sustituir el asistencialismo tradicional por un esquema de **"Pago por Avance"** verificable, donde los fondos se liberan únicamente cuando se demuestra evidencia del impacto real.
+La misión de esta capa es materializar el **Modelo de Confianza** de Bitajón: sustituir el asistencialismo tradicional por un esquema de **"Pago por Avance"** verificable, donde los fondos se liberan únicamente cuando se demuestra evidencia del impacto real.
+
+> **Estado actual**: 5 contratos desplegados y verificados en Testnet (Protocolo 30 - Bell). 122 tests en verde. Detalles de direcciones, transacciones y estado del despliegue en el [`README.md` raíz](../README.md).
 
 ---
 
-## 📖 0. Glosario de Conceptos y su Rol en Thriving
+## 📖 0. Glosario de Conceptos y su Rol en Bitajón
 
-Para evitar ambigüedades arquitectónicas, definimos los siguientes conceptos clave y su responsabilidad dentro del ecosistema de Thriving Stellar:
+Para evitar ambigüedades arquitectónicas, definimos los siguientes conceptos clave y su responsabilidad dentro del ecosistema:
 
-| Concepto | Definición General | Rol en Thriving Stellar |
+| Concepto | Definición General | Rol en Bitajón |
 | :--- | :--- | :--- |
-| **Crowdfunding** (Financiación Colectiva) | Modelo donde muchas personas aportan pequeñas cantidades para financiar una causa o proyecto. | Es el **modelo de negocio** general de la plataforma. |
-| **Fundraising** (Recaudación de Fondos) | Proceso general de conseguir recursos para una organización o causa. | Es la **actividad** que realizan las fundaciones en la plataforma. |
-| **Vaca / Pooling** (Colombia) | Fondo común donde varias personas aportan dinero para un objetivo compartido. | Es la **mecánica de recolección** de fondos entre múltiples donantes hacia una misma campaña. |
-| **Escrow** (Custodia Condicionada) | Mecanismo neutral que custodia fondos y los libera al cumplirse condiciones acordadas. | Es el **mecanismo técnico** de garantía. En nuestro caso, el contrato `campaign-vault` que custodia y distribuye los fondos a medida que se cumplen hitos. |
-| **Campaign** (Campaña) | Entidad que representa una iniciativa específica de recaudación (ej. "Kits escolares 2026"). | Es la **unidad lógica** de negocio. Vive como entidad en `campaign-registry` y como estado financiero en `campaign-vault`. Agrupa múltiples donaciones (Pooling) y define los hitos a cumplir. **No es un contrato separado**, sino una estructura de datos gestionada por dos contratos especializados. |
+| **Crowdfunding** (Financiación Colectiva) | Modelo donde muchas personas aportan pequeñas cantidades para financiar una causa. | Es el **modelo de negocio** general de la plataforma. |
+| **Fundraising** (Recaudación de Fondos) | Proceso general de conseguir recursos para una organización. | Es la **actividad** que realizan las fundaciones en la plataforma. |
+| **Vaca / Pooling** (Colombia) | Fondo común donde varias personas aportan para un objetivo compartido. | Es la **mecánica de recolección** de fondos entre múltiples donantes hacia una misma campaña. |
+| **Escrow** (Custodia Condicionada) | Mecanismo neutral que custodia fondos y los libera al cumplirse condiciones. | Es el **mecanismo técnico** de garantía. En nuestro caso, el contrato `campaign-vault`. |
+| **Campaign** (Campaña) | Entidad que representa una iniciativa específica de recaudación. | Es la **unidad lógica** de negocio. Vive como entidad en `campaign-registry` y como estado financiero en `campaign-vault`. **No es un contrato separado**, sino una estructura de datos gestionada por dos contratos especializados. |
 
 ---
 
 ## 🧭 1. Prerrequisitos y Versiones
 
-Para garantizar la reproducibilidad y compatibilidad con el runtime de Soroban del **Protocolo 30 (Bell)**, el entorno de desarrollo debe ceñirse estrictamente a las siguientes versiones.
+Para garantizar la reproducibilidad y compatibilidad con el runtime de Soroban del **Protocolo 30 (Bell)**, el entorno debe ceñirse a estas versiones.
 
 | Componente | Versión Requerida | Notas |
 | :--- | :--- | :--- |
 | **Rust** | `1.84+` (estable) | El compilador debe soportar el target `wasm32v1-none`. |
 | **Target Wasm** | `wasm32v1-none` | Único target soportado por Soroban. **No** usar `wasm32-unknown-unknown`. |
 | **Soroban SDK** | `29.0.1` | Incluye parches para CVE-2026-32322 y CVE-2026-24889. |
-| **Stellar CLI** | `30.0.1` | Requerida por el SDK 29.0.1. Incluye `stellar contract build` y `stellar contract deploy`. |
+| **Stellar CLI** | `30.0.1` | Requerida por el SDK 29.0.1. |
 | **Protocolo de Red** | `30 (Bell)` | Testnet y Mainnet alineados (Noviembre 2026). |
+| **Bun** | `1.1+` | Requerido para `scripts/bootstrap.mjs`. Alternativa: Node.js 20+. |
 
 ### 🛠️ Instalación del Entorno
 
 ```bash
-# 1. Instalar Rust (si no se tiene)
+# 1. Instalar Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # 2. Añadir el target correcto para Soroban
@@ -49,46 +52,50 @@ rustc --version          # Debe ser >= 1.84
 stellar --version        # Debe ser 30.0.1
 ```
 
-> ⚠️ **Advertencia Crítica**: Construye siempre los contratos con `stellar contract build`. **Nunca** uses `cargo build` directamente, ya que este último no aplica las configuraciones específicas que el runtime de Soroban requiere para el target `wasm32v1-none`.
+> ⚠️ **Advertencia crítica**: Construye siempre los contratos con `stellar contract build`. **Nunca** uses `cargo build` directamente, ya que este último no aplica las configuraciones específicas que el runtime de Soroban requiere para el target `wasm32v1-none`.
 
 ---
 
 ## 🏗️ 2. Arquitectura del Workspace
 
-El proyecto se organiza como un **Cargo Workspace** que alberga múltiples *crates* (paquetes de Rust), siguiendo los principios de **Scream Architecture**: los nombres de los crates revelan su responsabilidad sin necesidad de abrir el código.
+El proyecto se organiza como un **Cargo Workspace** que alberga múltiples *crates*, siguiendo los principios de **Scream Architecture**: los nombres de los crates revelan su responsabilidad sin necesidad de abrir el código.
 
 ### 📂 Estructura de Directorios
 
 ```text
 contracts/
-├── Cargo.toml                    # Workspace raíz (miembros, dependencias, profiles)
-├── thriving-types/               # Librería: tipos de dominio, errores, constantes
+├── Cargo.toml                    # Workspace raíz
+├── protocol-types/               # Librería: tipos de dominio, errores, constantes
 │   └── src/lib.rs
-├── thriving-interfaces/          # Librería: traits públicos para cross-contract calls
+├── protocol-interfaces/          # Librería: traits públicos para cross-contract calls
 │   └── src/lib.rs
+├── governance-account/           # Contrato: smart account multisig (Ed25519 pubkeys)
+│   ├── src/{lib,storage,events,test}.rs
+│   ├── tests/{integration,auth_flow}.rs
+│   └── test_snapshots/
 ├── nonprofit-registry/           # Contrato: identidad y KYC de fundaciones
 │   ├── src/{lib,storage,events,test}.rs
-│   ├── test_snapshots/test/*.json
-│   └── Cargo.toml
+│   └── test_snapshots/
 ├── campaign-registry/            # Contrato: metadatos de campañas
 │   ├── src/{lib,storage,events,test}.rs
 │   ├── tests/integration.rs
-│   ├── test_snapshots/{test/*.json, *.json}
-│   └── Cargo.toml
-├── campaign-vault/               # Contrato: custodia y liberación de fondos por hitos
+│   └── test_snapshots/
+├── campaign-vault/               # Contrato: custodia y liberación por hitos
 │   ├── src/{lib,storage,events,test}.rs
 │   ├── tests/integration.rs
-│   ├── test_snapshots/{test/*.json, *.json}
-│   └── Cargo.toml
-├── donation-router/              # Contrato: punto de entrada único con fee de plataforma
+│   └── test_snapshots/
+├── donation-router/              # Contrato: punto de entrada único con fee
 │   ├── src/{lib,storage,events,test}.rs
 │   ├── tests/integration.rs
-│   ├── test_snapshots/{test/*.json, *.json}
-│   └── Cargo.toml
+│   └── test_snapshots/
+├── scripts/                      # Automatización operativa
+│   ├── bootstrap.mjs             # Deploy + router config en una sola pasada
+│   ├── extend-ttl.sh             # Extiende TTL de Wasm e instancias
+│   └── package.json
 ├── docs/
-│   ├── known-limitations.md      # Limitaciones conocidas del MVP
-│   ├── frontend-guide.md         # Guía exhaustiva para el equipo de frontend
-│   └── events-reference.md       # Referencia completa de eventos on-chain
+│   ├── known-limitations.md
+│   ├── frontend-guide.md
+│   └── events-reference.md
 └── README.md                     # Este archivo
 ```
 
@@ -96,69 +103,89 @@ contracts/
 
 | Nombre | Responsabilidad Única |
 | :--- | :--- |
-| **`thriving-types`** | Fuente única de verdad para `struct`, `enum`, errores y constantes del dominio. Cambiar un error aquí lo cambia en todo el ecosistema. |
-| **`thriving-interfaces`** | Traits que definen las funciones públicas de cada contrato. Permiten cross-contract calls tipadas y desacopladas de la implementación. |
-| **`nonprofit-registry`** | Gestiona el ciclo de vida de las fundaciones (registro, aprobación, revocación). |
-| **`campaign-registry`** | Gestiona la creación y cancelación de campañas, validando que la fundación esté aprobada. |
+| **`protocol-types`** | Fuente única de verdad para `struct`, `enum`, errores y constantes del dominio. Cambiar un error aquí lo cambia en todo el ecosistema. |
+| **`protocol-interfaces`** | Traits que definen las funciones públicas de cada contrato. Permiten cross-contract calls tipadas y desacopladas de la implementación. |
+| **`governance-account`** | Smart account multisig Ed25519 (M-de-N) que puede actuar como `admin` de cualquier contrato o como `verifier` de una campaña. |
+| **`nonprofit-registry`** | Ciclo de vida de las fundaciones (registro, aprobación, revocación). |
+| **`campaign-registry`** | Creación y cancelación de campañas. Valida que la fundación esté aprobada. |
 | **`campaign-vault`** | Custodia los fondos de cada campaña y los libera según el modelo de hitos. Es el "escrow" técnico. |
-| **`donation-router`** | Punto de entrada único para donaciones. Aplica la comisión de plataforma y enruta al vault. |
+| **`donation-router`** | Punto de entrada único para donaciones. Aplica el fee de plataforma y enruta al vault. |
+
+### 🧱 Jerarquía de dependencias
+
+```text
+protocol-types ◄─── protocol-interfaces ◄─── (todos los contratos)
+       ▲                    ▲
+       │                    │
+       └── governance-account
+       └── nonprofit-registry
+       └── campaign-registry ◄─── nonprofit-registry (cross-call)
+       └── campaign-vault    ◄─── campaign-registry (cross-call)
+       └── donation-router   ◄─── campaign-vault    (cross-call)
+```
 
 ---
 
 ## 🧩 3. Descripción de los Contratos
 
-### 3.1. `nonprofit-registry` — La Identidad Verificada ✅
+### 3.1. `governance-account` — Multisig Dinámico ✅
+
+**Propósito**: Smart account multisig que puede actuar como `admin` de cualquier contrato o como `verifier` de una campaña.
+
+**Modelo de Firmantes**:
+- Signers son **Ed25519 public keys** (`BytesN<32>`), no `Address`.
+- Firma: `Vec<SignerProof>` donde cada proof es `{ public_key: BytesN<32>, signature: BytesN<64> }`.
+- La verificación se hace con `env.crypto().ed25519_verify()` directamente dentro de `__check_auth`.
+
+**Por qué pubkeys y no Addresses**: `require_auth()` sobre una dirección `G...` requiere que esa dirección aparezca como su propio auth entry en la transacción, lo cual el SDK no puede construir para flujos anidados de smart accounts. La verificación Ed25519 directa sí funciona con un solo auth entry sobre el `governance-account`.
+
+**Funciones exportadas**: `__constructor`, `add_signer`, `remove_signer`, `update_threshold`, `get_signers`, `get_threshold`, `is_signer`, `verify_signatures` (read-only para pre-check off-chain), `__check_auth`.
+
+**Seguridad Aplicada**:
+- ✅ Firma criptográfica verificada con `ed25519_verify`.
+- ✅ Auto-ajuste de `threshold` si se remueve un signer y el threshold excede el conteo.
+- ✅ `NoSigners` si se intenta remover el último signer (previene bricking).
+- ✅ Threshold siempre `1..=signers.len()`.
+- ✅ Cambios de configuración requieren el threshold actual (previene escalada de privilegios por un solo signer).
+- ✅ `extend_instance_ttl` en cada entry point.
+
+---
+
+### 3.2. `nonprofit-registry` — La Identidad Verificada ✅
 
 **Propósito**: Gestionar el ciclo de vida de las fundaciones que desean operar en la plataforma.
 
 **Responsabilidades**:
-- **Registro**: Una fundación (identificada por una `Address` de Stellar) se registra con un hash de su documentación legal (KYC/AML) almacenado off-chain (ej. IPFS). El estado inicial es siempre `Pending`, independientemente del input del llamador.
-- **Aprobación**: Solo la dirección `Admin` (designada en el constructor) puede aprobar o revocar una fundación.
-- **Consulta**: Expone `is_approved(address) -> bool` que otros contratos (como `campaign-registry`) pueden invocar vía cross-contract call.
+- **Registro**: Una fundación se registra con un hash de su documentación legal (KYC/AML) almacenado off-chain. El estado inicial es siempre `Pending`.
+- **Aprobación**: Solo el `admin` (que puede ser un `governance-account`) puede aprobar o revocar.
+- **Consulta**: Expone `is_approved(address) -> bool` para cross-contract calls.
 
-**Estado Clave**:
-- `Admin: Address` (instance storage).
-- `Profile(Address): NonprofitProfile` (persistent storage con TTL gestionado).
+**Privacidad (Ley 1581 de 2012)**: `NonprofitProfile` almacena `email_hash: Bytes` en lugar del correo en claro. El RUT también se almacena como hash. Los datos personales nunca tocan la cadena.
 
-**Seguridad Aplicada**:
-- ✅ `require_auth()` en todas las mutaciones.
-- ✅ Verificación manual de `admin == stored_admin` (defensa en profundidad).
-- ✅ `register_nonprofit` fuerza `status = Pending` (previene bypass de aprobación).
-- ✅ `extend_instance_ttl` en cada mutación (previene "bricking" del contrato por inactividad).
-- ✅ `extend_ttl` en lecturas de perfiles (evita archivado de datos activos).
+**Transferencia de admin**: dos pasos (`propose_admin` / `accept_admin`) para prevenir lockout accidental.
 
-**Funciones exportadas**: `__constructor`, `register_nonprofit`, `approve_nonprofit`, `revoke_nonprofit`, `is_approved`, `get_profile`.
+**Funciones exportadas**: `__constructor`, `register_nonprofit`, `approve_nonprofit`, `revoke_nonprofit`, `is_approved`, `get_profile`, `propose_admin`, `accept_admin`, `get_admin`, `get_pending_admin`.
 
 ---
 
-### 3.2. `campaign-registry` — Metadatos de Campañas ✅
+### 3.3. `campaign-registry` — Metadatos de Campañas ✅
 
-**Propósito**: Registrar las campañas creadas por fundaciones aprobadas y validar la legitimidad vía cross-contract call a `nonprofit-registry`.
+**Propósito**: Registrar las campañas creadas por fundaciones aprobadas.
 
 **Responsabilidades**:
 - **Creación**: Una fundación aprobada crea una campaña con `name`, `description`, `location`, `target_amount`, `token_address`, `deadline` y `milestone_percentage`.
-- **Validación**: Antes de crear, se invoca `nonprofit-registry.is_approved(fundacion)`. Si falla, la transacción se revierte con `NonprofitNotApproved`.
+- **Validación**: Antes de crear, se invoca `nonprofit-registry.is_approved(fundacion)`.
 - **Cancelación**: Solo la fundación dueña puede cancelar una campaña `Active`.
 
-**Estado Clave**:
-- `Admin`, `NonprofitRegistry`, `NextCampaignId` (instance storage).
-- `Campaign(u64): Campaign` (persistent storage con TTL gestionado).
+**Milestone obligatorio (Opción C)**: `milestone_percentage` debe estar en `MIN_MILESTONE_PERCENTAGE..=MAX_MILESTONE_PERCENTAGE` (`1..=90`). **No hay default implícito**. El cap de 90% garantiza que al menos 10% de `target_amount` quede atado a evidencia, preservando el modelo "Payment by Progress".
 
-**Seguridad Aplicada**:
-- ✅ Validación de `target_amount > 0` (`InvalidAmount`).
-- ✅ Validación de `deadline > ledger.timestamp()` (`InvalidDeadline`).
-- ✅ Validación de `milestone_percentage <= 100` (`InvalidMilestonePercentage`).
-- ✅ Validación del `token_address` (llamada a `decimals()` para verificar que es un SAC real).
-- ✅ Patrón CEI (Checks-Effects-Interactions) en `cancel_campaign`.
-- ✅ `extend_instance_ttl` en mutaciones y `extend_ttl` en lecturas.
-
-**Funciones exportadas**: `__constructor`, `create_campaign`, `cancel_campaign`, `get_campaign`.
+**Funciones exportadas**: `__constructor`, `create_campaign`, `cancel_campaign`, `get_campaign`, `propose_admin`, `accept_admin`, `get_admin`, `get_pending_admin`.
 
 ---
 
-### 3.3. `campaign-vault` — El Motor de Custodia ✅
+### 3.4. `campaign-vault` — El Motor de Custodia ✅
 
-**Propósito**: Custodiar los fondos de una o varias **campañas** y liberarlos de forma programática al cumplirse los hitos.
+**Propósito**: Custodiar los fondos de cada campaña y liberarlos según el modelo de hitos.
 
 **Modelo de Datos**:
 ```rust
@@ -166,38 +193,41 @@ pub struct VaultState {
     pub campaign_id: u64,
     pub nonprofit: Address,
     pub token_address: Address,
-    pub target_amount: i128,   // cacheado al crear el vault
-    pub deadline: u64,         // cacheado al crear el vault
+    pub target_amount: i128,       // cacheado al crear el vault
+    pub deadline: u64,             // cacheado al crear el vault
+    pub milestone_percentage: u32, // cacheado al crear el vault
+    pub verifier: Address,         // rol separado del admin
     pub total_deposited: i128,
     pub initial_release_done: bool,
     pub evidence_hash: Option<Bytes>,
     pub final_release_done: bool,
+    pub paused: bool,              // freno de emergencia
 }
 ```
 
-**Flujo Lógico (MVP)**:
-1. **`create_vault`**: La fundación crea el vault de una campaña. Se cachean `token_address`, `target_amount` y `deadline` para evitar cross-contract calls en el hot-path (`deposit`).
-2. **`deposit`**: Los donantes transfieren stablecoins. Al alcanzar `target_amount`, se libera automáticamente el **50%** a la fundación (patrón CEI estricto: Effects antes de Interactions).
-3. **`submit_evidence`**: La fundación sube el hash de la evidencia (fotos/videos) a IPFS/Irys.
-4. **`release_final`**: El Admin valida la evidencia y libera el **50%** restante.
+**Flujo**:
+1. **`create_vault`**: La fundación crea el vault de una campaña. Se cachean `token_address`, `target_amount`, `deadline` y `milestone_percentage` para evitar cross-calls en el hot-path.
+2. **`deposit`**: Los donantes transfieren stablecoins. Al alcanzar `target_amount`, se libera automáticamente `milestone_percentage` a la fundación (patrón CEI estricto).
+3. **`submit_evidence`**: La fundación sube el hash de la evidencia. Puede sobrescribirse hasta el `release_final`.
+4. **`release_final`**: El **verifier** (no el admin) valida la evidencia y libera el balance restante.
 
-**Seguridad Aplicada**:
-- ✅ Patrón CEI estricto: el estado se persiste antes de cualquier transferencia externa.
-- ✅ `create_vault` deriva `token_address` de la campaña (no acepta un argumento que podría no coincidir).
-- ✅ `deposit` rechaza campañas expiradas (`CampaignExpired`) y vaults finalizados (`VaultFinalized`).
-- ✅ Validación de `evidence_hash` no vacío (`InvalidEvidence`).
-- ✅ `extend_instance_ttl` en mutaciones y `extend_ttl` en lecturas.
-- ✅ **Bypass del router cerrado**: ver sección [§6](#-6-modelo-de-fee-y-bypass-del-router).
+**Fixes del feedback incorporados**:
+- **H1 (refunds pull)**: `claim_refund(campaign_id, donor)` permite a cada donante reclamar su aporte cuando la campaña expira, se cancela, o se pausa sin haber liberado el milestone inicial. Contribuciones rastreadas por `(campaign, donor)` en storage persistente.
+- **H2 (milestone custom)**: cacheado y usado en `deposit` y `release_final`.
+- **H3 (TOCTOU)**: `release_final(campaign_id, verifier, expected_evidence)` falla con `InvalidEvidenceHash` si la evidencia cambió entre la revisión y la firma. Distingue `EvidenceNotSubmitted` (#8) de `InvalidEvidenceHash` (#29).
+- **H4 (pause)**: `pause_vault` / `unpause_vault` bloquean depósitos y habilitan refunds inmediatos.
 
-**Funciones exportadas**: `__constructor`, `create_vault`, `deposit`, `submit_evidence`, `release_final`, `get_vault`, `set_authorized_router`, `get_authorized_router`.
+**Roles separados**: `admin` (configuración del protocolo) y `verifier` (validación de evidencia). Un admin comprometido no puede liberar el balance final; un verifier comprometido no puede reconfigurar el protocolo.
+
+**Funciones exportadas**: `__constructor`, `create_vault`, `deposit`, `claim_refund`, `submit_evidence`, `release_final`, `pause_vault`, `unpause_vault`, `get_vault`, `set_authorized_router`, `get_authorized_router`, `set_verifier_for_campaign`, `propose_admin`, `accept_admin`, `get_admin`, `get_pending_admin`.
 
 ---
 
-### 3.4. `donation-router` — Punto de Entrada Único ✅
+### 3.5. `donation-router` — Punto de Entrada Único ✅
 
-**Propósito**: Ser el único punto de entrada para donaciones, abstrayendo al frontend y aplicando la comisión de plataforma (Modelo B: fee descontado del gross).
+**Propósito**: Ser el único punto de entrada para donaciones, abstrayendo al frontend y aplicando el fee de plataforma (Modelo B: fee descontado del gross).
 
-**Flujo de una Donación**:
+**Flujo atómico**:
 ```text
 donor → router.donate(campaign_id, amount)
          ├── fee = amount * fee_bps / 10_000
@@ -205,82 +235,70 @@ donor → router.donate(campaign_id, amount)
          └── vault.deposit(campaign_id, donor, amount - fee)  ← cross-call
 ```
 
-**Ventajas**:
-- Centraliza la aplicación de comisiones de plataforma sin modificar cada vault.
-- Facilita la integración con **on-ramps** (VANK, Pollar) que requieren un punto de entrada único.
-- Preparado para añadir **prueba de humanidad** post-MVP.
+Todo ocurre en una sola transacción firmada por el donante. Si cualquier paso falla, la transacción completa revierte.
 
-**Funciones exportadas**: `__constructor`, `donate`, `quote`, `update_fee_bps`, `update_treasury`, `get_fee_bps`, `get_treasury`.
+**Funciones exportadas**: `__constructor`, `donate`, `quote`, `update_fee_bps`, `update_treasury`, `get_fee_bps`, `get_treasury`, `get_campaign_vault`, `propose_admin`, `accept_admin`, `get_admin`, `get_pending_admin`.
 
 ---
 
-## 🚀 4. Estado del Deploy (Testnet)
+## 🚀 4. Estado del Deploy
 
-**Fecha del despliegue**: Noviembre 2026
-**Red**: Stellar Testnet (Protocolo 30 - Bell)
-**Estado**: ✅ Desplegado y verificado on-chain
-**Fee de plataforma**: `0 bps` (0% — intencional para el demo)
-**Bypass del fee**: ✅ Cerrado (`authorized_router` activado)
+**Estado**: ✅ Desplegado y verificado en Testnet (Protocolo 30 - Bell)
+**Fee de plataforma**: `0 bps` (intencional para el demo)
+**Bypass del fee**: ✅ Cerrado (`authorized_router` configurado)
+**TTL**: ✅ Extendido a ~30 días para los 5 Wasm + 5 instancias
 
-### 🔑 Cuenta de Despliegue y Administración
+Los detalles específicos del despliegue — identidad del deployer, direcciones `C...` de los 5 contratos, hashes de Wasm, hashes de transacciones de deploy, links a Stellar Expert y el archivo `.env.testnet` — viven en el [`README.md` raíz](../README.md), que es la fuente de verdad operativa del proyecto.
 
-| Rol | Identidad CLI | Dirección Stellar |
-| :--- | :--- | :--- |
-| **Deployer + Admin** | `deployer` | `GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5` |
+### 🔐 Sobre el modelo de gobernanza en Testnet
 
-La clave secreta vive en `~/.config/stellar/identity/deployer.toml` y **nunca** debe commitearse. Para el MVP de Testnet es aceptable; para Mainnet se debe usar multi-sig o una smart account con Passkeys.
-
-### 📋 Contratos Desplegados
-
-| # | Contrato | Dirección (`C...`) | Propósito |
-| :--- | :--- | :--- | :--- |
-| 1 | **Nonprofit Registry** | `CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K` | Registro y aprobación de fundaciones. |
-| 2 | **Campaign Registry** | `CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR` | Metadatos de campañas. Valida contra el registro de nonprofits. |
-| 3 | **Campaign Vault** | `CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT` | Custodia de fondos y liberación por hitos (50/50). |
-| 4 | **Donation Router** | `CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD` | Punto de entrada único con fee de plataforma. |
-
-### 🔗 Transacciones de Despliegue (stellar.expert)
-
-| Contrato | Wasm Hash | Tx de Deploy |
-| :--- | :--- | :--- |
-| **Nonprofit Registry** | `7376fe65dd8fa0611a2742a3cf4941c6a7dcc9b4578ac97c0f1b90c82a0703af` | [`138523ea...b1c7989`](https://stellar.expert/explorer/testnet/tx/138523eaeee800b82d5fd7704c0f0687f344d52257d1aa51fb7042635b1c7989) |
-| **Campaign Registry** | `484493887c7b87e6be9436d9036a58142be1be6c13dac78ea0fd81b55b2e65e9` | [`b2bcc54a...680d8457`](https://stellar.expert/explorer/testnet/tx/b2bcc54a8527338842b1d922bcc0a9ff25ca60200279f0ac0b0b17b4680d8457) |
-| **Campaign Vault** | `6ce4ac4e3c76a77f70e5c21b3550c1c5519505fca43b80e0739fbc13f68904d5` | [`b93a1906...036e2a`](https://stellar.expert/explorer/testnet/tx/b93a1906651782b0f242d9ccd97f97bcf1a5a701f7ca634e6e2a156aff036e2a) |
-| **Donation Router** | `bbcc1dbd99e15112dffc1f66ee49e7ad3f19fb60ad4feb934ae1724d5d24c356` | [`9ff27e27...d90d46dd`](https://stellar.expert/explorer/testnet/tx/9ff27e271e31fd7c201c9de79821221c5de85f99c59522c48442c7a9d90d46dd) |
-
-### 💾 Configuración Local Persistida
-
-El archivo `.env.testnet` en la raíz del monorepo (ignorado por git) contiene las 4 direcciones:
-
-```bash
-NP_ID=CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K
-CR_ID=CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR
-CV_ID=CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT
-DR_ID=CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD
-```
+- **Fase actual**: `governance-account` con `[deployer]` y `threshold = 1`. Funcionalmente equivalente a una EOA, pero con el flujo multisig ya probado. Escalar a 2-de-3 es una llamada a `add_signer` + `update_threshold`, sin redeploy.
+- **Pre-Mainnet**: Obligatorio que `governance-account` tenga `>= 2` signers y `threshold >= 2`. Un solo signer en Mainnet es un riesgo operacional serio.
+- **Nota CLI**: `stellar contract invoke` no puede firmar por smart accounts (`C...`). Las operaciones de admin que requieran firma del `governance-account` deben pasar por `scripts/bootstrap.mjs` (que construye el `SorobanAuthorizationEntry` a mano) o por el frontend con `@stellar/stellar-sdk`.
 
 ---
 
 ## 🛡️ 5. Activación del `authorized_router`
 
-Tras el deploy, el `campaign-vault` arranca en **modo abierto** (`authorized_router = None`). Se activó el modo cerrado configurando el `donation-router` como único invocador autorizado de `deposit`:
+Tras el deploy, el `campaign-vault` arranca en **modo abierto** (`authorized_router = None`). El script `scripts/bootstrap.mjs` configura el modo cerrado en la misma pasada del deploy, construyendo la firma Ed25519 correctamente:
 
 ```bash
-stellar contract invoke \
-  --id CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT \
-  --source deployer --network testnet \
-  -- set_authorized_router \
-  --admin deployer \
-  --router '"CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD"'
+cd contracts/scripts
+bun install 
+bun run bootstrap
 ```
+Lo hice con bun, se puede con npm, pnpm, yarn, etc...
 
-| Parámetro | Valor |
-| :--- | :--- |
-| **Tx de activación** | [`c40d5a1c...80e392`](https://stellar.expert/explorer/testnet/tx/c40d5a1cdace3276164bff65119b90b14482d830af2255369781ff926980e392) |
-| **Evento emitido** | `AuthorizedRouterUpdated { authorized_router: Some("CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD") }` |
-| **Verificación** | `stellar contract invoke --id $CV_ID -- get_authorized_router` → devuelve `"CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD"` |
+El script realiza automáticamente:
+1. Deploy de los 5 contratos en orden de dependencia.
+2. Configuración de `authorized_router` en el vault con un `SorobanAuthorizationEntry` firmado vía Ed25519 sobre la preimagen CAP-71 (envelope type 10).
+3. Bump del instruction limit para cubrir el costo real de `__check_auth` con firmas.
+4. Backup del `.env.testnet` anterior.
+5. Escritura del nuevo `.env.testnet` con `AUTHORIZED_ROUTER_CONFIGURED=yes`.
 
-> 📌 **Nota técnica sobre `Option<Address>` en el CLI 30.0.1**: la sintaxis requiere comillas simples envolviendo la dirección con comillas dobles (`--router '"C..."'`). Pasar la dirección desnuda (`--router C...`) falla con `Invalid JSON in argument 'router'` porque el CLI intenta parsear el `Option` como JSON. Documentado para futuras automatizaciones.
+### ¿Por qué funciona `authorized_router`?
+
+Soroban considera que **la llamada directa de un contrato a otro está implícitamente autorizada**. Cuando el `donation-router` llama a `vault.deposit()`, el vault exige `router.require_auth()`, y esa autorización se cumple por el solo hecho de ser el invocador directo.
+
+| Escenario | `router.require_auth()` | Resultado |
+| :--- | :--- | :--- |
+| `router.donate()` → `vault.deposit()` | ✅ Autorización implícita | **Pasa** |
+| `donor.deposit()` (directo al vault) | ❌ El donor no puede producir la firma del router | **Falla** |
+| Admin llama `set_authorized_router(admin, None)` | — | Modo abierto restaurado |
+
+Tres tests de integración cubren los escenarios: `test_direct_deposit_blocked_when_router_configured`, `test_donate_works_when_router_is_authorized_in_vault`, `test_deposit_works_after_clearing_router`.
+
+### Checklist de Deploy a Mainnet
+
+Antes de habilitar el cobro de fee en producción:
+
+1. ✅ Desplegar `donation-router`.
+2. ✅ Llamar `vault.set_authorized_router(admin, Some(router_address))`.
+3. ✅ Llamar `router.update_fee_bps(admin, 200)` (o el valor deseado).
+4. ✅ Smoke test: el bypass directo debe fallar.
+5. ✅ `governance-account` con `>= 2` signers y `threshold >= 2`.
+
+> ⚠️ **Mientras `authorized_router = None`, el fee NO está protegido**. Esto es intencional para el MVP (fee = 0), pero **debe activarse antes del cobro real**.
 
 ---
 
@@ -321,131 +339,83 @@ Esto es **crítico para el frontend**:
   ```
 
 - El frontend debe:
-  1. Llamar a `router.quote(gross_amount)` para obtener el desglose `{ gross, fee, net }`.
+  1. Llamar a `router.quote(gross_amount)` para obtener `{ gross, fee, net }`.
   2. Mostrar los 3 valores al donante.
   3. Calcular `gross` a partir del `target_amount` de la campaña.
 
-Los contratos **intencionalmente no hacen este cálculo**: es una preocupación de UX, no de protocolo, y mantenerlo fuera de la cadena minimiza el bytecode y facilita la auditoría.
+Los contratos **intencionalmente no hacen este cálculo**: es una preocupación de UX, no de protocolo.
 
-### Estado por defecto en el MVP
+### ⚠️ El `milestone_percentage` es obligatorio
 
-- `fee_bps = 0` al desplegar en Testnet (facilita demos sin fricción).
+A diferencia del fee, el `milestone_percentage` **NO tiene default**. El frontend debe pedirlo al crear la campaña, dentro del rango `1..=90`. El valor recomendado para sugerir es `RECOMMENDED_MILESTONE_PERCENTAGE = 50`.
+
+El cap de 90% garantiza que al menos 10% del `target_amount` quede siempre atado a evidencia, protegiendo a los donantes de una accountability vacía.
+
+### Estado por defecto en Testnet
+
+- `fee_bps = 0` (facilita demos sin fricción).
 - El admin puede activar el fee sin redeploy vía `update_fee_bps(admin, new_fee_bps)`.
 
 ---
 
-## 🔒 7. Bypass del Router (Cerrado)
+## 🧪 7. Estrategia de Pruebas
 
-### El problema del bypass
-
-Sin protección, un donante que conoce la dirección del `campaign-vault` y el `campaign_id` podría llamar `vault.deposit()` directamente, evitando pagar el fee de plataforma. Esto **rompería el modelo de negocio**.
-
-### La solución: `authorized_router`
-
-El `campaign-vault` implementa el patrón oficial de Soroban para verificar el invocador directo en sub-llamadas:
-
-1. **`set_authorized_router(admin, Some(router_address))`**: el admin configura qué router está autorizado a llamar `deposit`.
-2. **En `deposit`**, si hay un router configurado:
-   ```rust
-   if let Some(expected_router) = get_authorized_router(&env) {
-       expected_router.require_auth();
-   }
-   ```
-
-### ¿Por qué funciona?
-
-Soroban considera que **la llamada directa de un contrato a otro está implícitamente autorizada** (documentación oficial: *"All the direct calls that the current contract performs are always considered to have been authorized"*).
-
-| Escenario | `router.require_auth()` | Resultado |
-| :--- | :--- | :--- |
-| `router.donate()` → `vault.deposit()` | ✅ Autorización implícita (router es el invocador) | **Pasa** |
-| `donor.deposit()` (directo al vault) | ❌ El donor no puede producir la firma del router | **Falla con `HostError: Error(Auth, ...)`** |
-| Admin llama `set_authorized_router(admin, None)` | — | Modo abierto restaurado |
-
-### Verificación Empírica
-
-Tres tests de integración cubren los tres escenarios:
-
-- `test_direct_deposit_blocked_when_router_configured` (bypass intentado, debe fallar)
-- `test_donate_works_when_router_is_authorized_in_vault` (flujo feliz, debe pasar)
-- `test_deposit_works_after_clearing_router` (modo abierto, debe pasar)
-
-### Modos de Operación
-
-| Modo | Configuración | Comportamiento |
-| :--- | :--- | :--- |
-| **Modo abierto** | `authorized_router = None` (default) | Cualquier address puede llamar `deposit`. Útil en Testnet/demos. |
-| **Modo cerrado** | `authorized_router = Some(router)` | Solo el router configurado puede llamar `deposit`. Obligatorio en Mainnet. |
-
-### Checklist de Deploy a Mainnet
-
-Antes de habilitar el cobro de fee en producción:
-
-1. ✅ Desplegar `donation-router`.
-2. ✅ Llamar `vault.set_authorized_router(admin, Some(router_address))`.
-3. ✅ Llamar `router.update_fee_bps(admin, 200)` (o el valor deseado).
-4. ✅ Verificar con un smoke test que el bypass directo falla.
-
-> ⚠️ **Mientras `authorized_router = None`, el fee NO está protegido**. Esto es intencional para el MVP (fee = 0), pero **debe activarse antes del cobro real**.
-
----
-
-## 🧪 8. Estrategia de Pruebas
-
-### 8.1. Estructura de Tests
-
-La suite de pruebas se divide en tres capas:
+### 7.1. Estructura de Tests
 
 | Capa | Ubicación | Propósito |
 | :--- | :--- | :--- |
-| **Unit Tests** | `src/test.rs` | Valida la lógica interna de un contrato aislado. Rápidos, sin cross-contract calls reales. |
-| **Integration Tests** | `tests/integration.rs` | Valida el flujo completo entre contratos. Despliegan todos los contratos y verifican cross-contract calls. |
-| **Differential Tests** | `test_snapshots/` | Detectan cambios no intencionados en el estado del ledger o los eventos emitidos. |
+| **Unit Tests** | `src/test.rs` | Lógica interna de un contrato aislado. Rápidos, sin cross-contract calls. |
+| **Integration Tests** | `tests/integration.rs` | Flujo completo entre contratos. Despliegan todos los contratos y verifican cross-calls. |
+| **Auth Flow Tests** | `tests/auth_flow.rs` (solo `governance-account`) | Verificación Ed25519 real con firmas generadas por `ed25519-dalek`. |
+| **Differential Tests** | `test_snapshots/` | Detectan cambios no intencionados en el estado del ledger o los eventos. |
 
-### 8.2. Cobertura Actual
+### 7.2. Cobertura Actual (122 tests)
 
-| Contrato | Unit | Integration | Total |
-| :--- | :--- | :--- | :--- |
-| `nonprofit-registry` | 8 | — | **8** |
-| `campaign-registry` | 5 | 7 | **12** |
-| `campaign-vault` | 3 | 23 | **26** |
-| `donation-router` | 13 | 11 | **24** |
-| **TOTAL** | **29** | **41** | **70** |
+| Contrato | Unit | Integration | Auth Flow | Total |
+| :--- | :--- | :--- | :--- | :--- |
+| `governance-account` | 12 | 3 | 9 | **24** |
+| `nonprofit-registry` | 13 | — | — | **13** |
+| `campaign-registry` | 5 | 11 | — | **16** |
+| `campaign-vault` | 3 | 37 | — | **40** |
+| `donation-router` | 13 | 16 | — | **29** |
+| **TOTAL** | **46** | **67** | **9** | **122** |
 
 **Casos cubiertos**:
 - ✅ Happy path completo (registro → creación → depósito → evidencia → liberación).
-- ✅ Todos los errores del enum `Error` (códigos 1-26 excepto reservados).
-- ✅ Fallback de `milestone_percentage = 0` a `DEFAULT_MILESTONE_PERCENTAGE`.
-- ✅ Incrementación monotónica de IDs.
-- ✅ Múltiples donantes acumulando hasta el target.
-- ✅ Sobrescritura intencional de evidencia.
-- ✅ **Bypass del router cerrado** (3 tests).
-- ✅ Propagación de errores del vault a través del router.
-- ✅ Fee update afecta donaciones subsecuentes.
+- ✅ Todos los errores del enum `Error` (códigos 1-32).
+- ✅ Milestone custom (1, 30, 90) y rechazo de 0, 91, 100.
+- ✅ H1: refunds pull (expiry, cancel, pause, active-block, post-release-block, double-claim).
+- ✅ H2: milestone custom respetado en `deposit` y `release_final`.
+- ✅ H3: TOCTOU rechaza evidencia alterada.
+- ✅ H4: pause bloquea depósitos y habilita refunds.
+- ✅ Verifier role separado del admin.
+- ✅ Two-step admin transfer en los 4 contratos con admin.
+- ✅ Multisig Ed25519 con firmas reales (`auth_flow.rs`).
+- ✅ Bypass del router cerrado (3 tests).
 
-### 8.3. Limitación Conocida: `mock_all_auths`
+### 7.3. Limitación Conocida: `mock_all_auths`
 
-Los tests usan `env.mock_all_auths()` en la mayoría de los casos, lo que hace que **cualquier** `require_auth()` pase sin verificar firmas. Esto es aceptable para tests funcionales, pero **el test del bypass sí usa `env.mock_auths`** con autorización específica del donor (sin el router), reproduciendo fielmente el escenario de ataque.
+Los tests funcionales usan `env.mock_all_auths()`, que bypassa el dispatch de auth del host. Esto significa que:
 
-**Mejora futura**: migrar el resto de tests a `mock_auths` específicos para verificar `require_auth` en cada mutación.
+- Los tests **NO validan** que `require_auth()` funcione en producción.
+- El test de bypass del router **SÍ usa `env.mock_auths`** con autorización específica del donor.
+- `governance-account` tiene 9 tests en `auth_flow.rs` que **SÍ verifican firmas Ed25519 reales**, cerrando ese gap para el contrato más crítico.
 
-### 8.4. Snapshots de Pruebas (Differential Testing)
+### 7.4. Snapshots (Differential Testing)
 
-El SDK de Soroban genera automáticamente archivos JSON en `test_snapshots/` al finalizar cada prueba. Estos archivos capturan **todo el estado del ledger** (storage + eventos + árbol de autenticación) después de la ejecución.
+El SDK de Soroban genera archivos JSON en `test_snapshots/` al finalizar cada prueba. Capturan todo el estado del ledger (storage + eventos + árbol de autenticación).
 
-**Regla de Oro**: **Los snapshots deben ser commiteados al repositorio**.
-
-**¿Por qué?** Actúan como una red de seguridad contra efectos secundarios no intencionados. Si modificas `nonprofit-registry` y, sin querer, cambias el comportamiento de `campaign-registry`, los snapshots de `campaign-registry` fallarán. El `diff` te mostrará exactamente qué cambió.
+**Regla de oro**: **Los snapshots deben ser commiteados al repositorio**. Actúan como red de seguridad contra efectos secundarios no intencionados.
 
 **Verificación pre-commit**:
 ```bash
 cargo test && git diff --exit-code -- '*/test_snapshots/'
 ```
-Si el comando devuelve `exit 0` y sin output, los snapshots están al día. Si falla, hay que revisar el diff y commitear.
+Si devuelve `exit 0` sin output, los snapshots están al día.
 
 ---
 
-## ⚙️ 9. Comandos de Desarrollo
+## ⚙️ 8. Comandos de Desarrollo
 
 ### Compilación
 
@@ -466,133 +436,150 @@ cargo test
 # Ejecutar solo los tests de un contrato.
 cargo test -p campaign-vault
 
-# Ejecutar solo los unit tests de un contrato.
+# Ejecutar solo los unit tests.
 cargo test -p campaign-vault --lib
 
-# Ejecutar solo los integration tests de un contrato.
+# Ejecutar solo los integration tests.
 cargo test -p campaign-vault --test integration
 
-# Ejecutar un test específico por nombre.
-cargo test -p campaign-vault test_full_happy_path
+# Ejecutar solo los auth flow tests (governance-account).
+cargo test -p governance-account --test auth_flow
 ```
 
 ### Verificación de Snapshots
 
 ```bash
-# Ejecutar tests y verificar que los snapshots commiteados estén al día.
 cargo test && git diff --exit-code -- '*/test_snapshots/'
-
-# Verificar que no haya warnings.
 cargo test 2>&1 | grep -i warning && echo "⚠️ Warnings" || echo "✅ No warnings"
 ```
 
 ---
 
-## 🔄 10. CI/CD
+## 🔄 9. CI/CD
 
-El workflow de GitHub Actions (`.github/workflows/contracts-ci.yml`) se ejecuta en cada push o PR a `main` y realiza las siguientes verificaciones:
+El workflow de GitHub Actions (`.github/workflows/contracts-ci.yml`) se ejecuta en cada push o PR a `main`:
 
 1. **Instalación**: Rust + target `wasm32v1-none` + Stellar CLI v30.0.1.
 2. **Compilación**: `stellar contract build` para todos los contratos.
 3. **Testing**: `cargo test` para todos los crates.
-4. **Verificación de Snapshots**: Re-ejecuta los tests y usa `git diff --exit-code -- '*/test_snapshots/'` para garantizar que los snapshots commiteados estén al día.
+4. **Verificación de Snapshots**: `git diff --exit-code -- '*/test_snapshots/'` para garantizar que los snapshots commiteados estén al día.
 
 Si el workflow falla por snapshots desactualizados, ejecuta localmente `cargo test && git add '*/test_snapshots/' && git commit -m "chore(snapshots): regenerate"` y haz push de nuevo.
 
 ---
 
+## 🛠️ 10. Scripts Operativos
+
+### `scripts/bootstrap.mjs`
+
+Deploy completo en una sola pasada. Ver la sección [§5](#-5-activación-del-authorized_router).
+
+**Flags**:
+```bash
+bun run bootstrap                          # deploy 5 contratos + configurar router
+bun run bootstrap --skip-deploy            # reusar IDs de .env.testnet, solo configurar router
+bun run bootstrap --skip-router            # deploy only
+bun run bootstrap --fund                   # fondear deployer con Friendbot primero
+bun run bootstrap --extend-ttl             # ejecutar extend-ttl.sh al final
+bun run bootstrap --fee-bps 200            # fee inicial en bps (default: 0)
+bun run bootstrap --source <identity>      # identidad del CLI (default: deployer)
+```
+
+**Dependencia**: `@stellar/stellar-sdk@^17.4.0` (`bun install` en `contracts/scripts/`).
+
+### `scripts/extend-ttl.sh`
+
+Extiende el TTL de los 5 Wasm y las 5 instancias a ~30 días. Lee los contract IDs de `.env.testnet` y computa los Wasm hashes localmente (`sha256sum` o `shasum -a 256`).
+
+```bash
+cd contracts
+./scripts/extend-ttl.sh
+
+# Opciones
+./scripts/extend-ttl.sh --network mainnet
+./scripts/extend-ttl.sh --env-file /path/to/.env
+./scripts/extend-ttl.sh --dry-run
+```
+
+**Cuándo correrlo**: después de cada `deploy` (las instancias arrancan con TTL default, no al máximo) y luego cada ~25 días para evitar archivado.
+
+---
+
 ## 🔗 11. Bindings para el Frontend
 
-Para que el equipo de frontend (React/Next.js) pueda interactuar con los contratos sin escribir el JSON-RPC manualmente, se generan **bindings tipados**.
-
-### Ubicación
-
-Los bindings ya están generados en [`../bindings/`](../bindings) (raíz del monorepo, fuera de `contracts/`):
+Los bindings TypeScript tipados ya están generados en [`../bindings/`](../bindings):
 
 ```text
 bindings/
-├── campaign-registry/      # Client tipado para campaign-registry
-├── campaign-vault/         # Client tipado para campaign-vault
-├── donation-router/        # Client tipado para donation-router
-└── nonprofit-registry/     # Client tipado para nonprofit-registry
+├── governance-account/     # NEW: multisig con pubkey-based signers
+├── campaign-registry/
+├── campaign-vault/         # incluye claim_refund, pause_vault, release_final con expected_evidence
+├── donation-router/
+└── nonprofit-registry/     # incluye two-step admin, email_hash
 ```
 
-Cada paquete expone una clase `Client` con métodos tipados.
+Cada paquete expone una clase `Client` con métodos tipados. El frontend los importa como paquetes NPM locales.
 
 ### Regeneración (si cambia un contrato)
 
 ```bash
-stellar contract bindings typescript \
-  --wasm target/wasm32v1-none/release/nonprofit_registry.wasm \
-  --output-dir ../bindings/nonprofit-registry --overwrite
-
-stellar contract bindings typescript \
-  --wasm target/wasm32v1-none/release/campaign_registry.wasm \
-  --output-dir ../bindings/campaign-registry --overwrite
-
-stellar contract bindings typescript \
-  --wasm target/wasm32v1-none/release/campaign_vault.wasm \
-  --output-dir ../bindings/campaign-vault --overwrite
-
-stellar contract bindings typescript \
-  --wasm target/wasm32v1-none/release/donation_router.wasm \
-  --output-dir ../bindings/donation-router --overwrite
+cd contracts
+for wasm in governance_account nonprofit_registry campaign_registry campaign_vault donation_router; do
+  dir=$(echo "$wasm" | tr '_' '-')
+  stellar contract bindings typescript \
+    --wasm target/wasm32v1-none/release/$wasm.wasm \
+    --output-dir ../bindings/$dir --overwrite
+done
 ```
 
-> ⚠️ Los bindings generados por `stellar contract bindings typescript` están **deprecados** según el CLI 30. El reemplazo oficial es el `js-stellar-sdk`. Mientras el equipo de frontend evalúa la migración, los bindings actuales son funcionales y aceleran el desarrollo.
+> ⚠️ Los bindings generados por `stellar contract bindings typescript` están **deprecados** según el CLI 30. El reemplazo oficial es `js-stellar-sdk`. Mientras el equipo de frontend evalúa la migración, los bindings actuales son funcionales.
 
-### Uso desde el frontend
-
-```typescript
-import { Client as VaultClient } from '@thriving/campaign-vault';
-
-const vault = new VaultClient({
-  contractId: 'CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT',
-  networkPassphrase: 'Test SDF Network ; September 2015',
-  rpcUrl: 'https://soroban-testnet.stellar.org',
-});
-
-const state = await vault.get_vault({ campaign_id: 1n });
-```
-
-**La seguridad de tipos se mantiene de extremo a extremo**: si un método cambia su firma en Rust, el binding falla al compilar en TypeScript, no en runtime.
-
-### Documentación para el Frontend
-
-Para el detalle exhaustivo de flujos, eventos, manejo de errores, y UX recomendado, consulta:
-
-- [`docs/frontend-guide.md`](./docs/frontend-guide.md) — Guía completa de integración.
-- [`docs/events-reference.md`](./docs/events-reference.md) — Referencia on-chain de todos los eventos emitidos.
+Para la guía completa de integración (tipos, flujos, manejo de errores, UX), consulta [`docs/frontend-guide.md`](./docs/frontend-guide.md).
 
 ---
 
-## 🗺️ 12. Roadmap de Implementación
+## 🗺️ 12. Roadmap
 
 | Fase | Entregable | Estado |
 | :--- | :--- | :--- |
-| **Fase 0** | Workspace + `thriving-types` + `thriving-interfaces` | ✅ Completado |
-| **Fase 1** | Contrato `nonprofit-registry` + 8 unit tests | ✅ Completado |
-| **Fase 2** | Contrato `campaign-registry` + 5 unit + 7 integration tests | ✅ Completado |
-| **Fase 3** | Contrato `campaign-vault` + 26 tests (incluye bypass) | ✅ Completado |
-| **Fase 4** | Contrato `donation-router` + 24 tests (fee + bypass) | ✅ Completado |
-| **Fase 5** | Bindings TypeScript + Deploy a Testnet + `authorized_router` activado | ✅ Completado |
-| **Fase 6** | Integración con on-ramps (VANK/Pollar) en Testnet | ⏳ Futuro |
-| **Fase 7** | Gobernanza híbrida (auditor + votación ponderada) | ⏳ Futuro |
-| **Fase 8** | Deploy a Mainnet (con `authorized_router` configurado) | ⏳ Futuro |
+| **F0** | Workspace + `protocol-types` + `protocol-interfaces` | ✅ |
+| **F1** | `nonprofit-registry` (email_hash, two-step admin, TTL) | ✅ |
+| **F2** | `campaign-registry` (milestone 1..=90, two-step admin) | ✅ |
+| **F3** | `campaign-vault` (H1-H4, verifier, pause, TOCTOU) | ✅ |
+| **F4** | `governance-account` (multisig Ed25519, verify_signatures) | ✅ |
+| **F5** | `donation-router` (atomic donate, two-step admin) | ✅ |
+| **F6** | Tests actualizados (122 en verde) + snapshots regenerados | ✅ |
+| **F7** | Deploy Testnet + `authorized_router` + TTL extendido | ✅ |
+| **F8** | Bindings TypeScript regenerados (5 paquetes) | ✅ |
+| **F9** | Verificación pública en Stellar Expert (GitHub Release) | ✅ |
+| **F10** | Documentación completa (`known-limitations`, `frontend-guide`, `events-reference`) | ✅ |
+| **F11** | Google Sign-In (frontend, vía Accesly/Blux o SDK similar) | ⏳ Futuro |
+| **F12** | On-ramps (SEP-24/6) con VANK/Pollar (frontend + Anchor) | ⏳ Futuro |
+| **F13** | Batching de refunds (contrato auxiliar) | ⏳ Discutiendo |
+| **F14** | Deploy a Mainnet con `governance-account` 2-of-3 | ⏳ Futuro |
+
+### Consideraciones futuras (no bloqueantes)
+
+- **Google Sign-In**: Los contratos aceptan cualquier `Address` (`G...` o `C...`). Un SDK como Accesly o Blux puede crear la smart account asociada a Google y transferirle el admin vía `propose_admin` / `accept_admin`. Cero cambios en los contratos.
+- **Irys**: El contrato ya abstrae el almacenamiento (`evidence_hash: Bytes`). Usar Irys off-chain no requiere tocar el contrato.
+- **Wasm upgrade path**: Decisión de diseño (reglas inmutables). Si se requiere, implementar con timelock de 48h. Documentado en `known-limitations.md`.
 
 ---
 
-## 🚧 13. Limitaciones Conocidas del MVP
+## 🚧 13. Limitaciones Conocidas
 
 Consulta [`docs/known-limitations.md`](./docs/known-limitations.md) para el detalle completo. Resumen:
 
-| Limitación | Impacto | Mitigación MVP |
+| Limitación | Estado | Mitigación |
 | :--- | :--- | :--- |
-| Cancelación post-vault sigue aceptando depósitos | Medio | Frontend verifica estado antes de mostrar botón |
-| Sobrescritura intencional de evidencia | Bajo | Documentado como feature |
-| Dust en montos < 2 unidades | Bajo | Documentado en `DEFAULT_MILESTONE_PERCENTAGE` |
-| Sin refund si la campaña se cancela | Medio | Fuera de scope del MVP |
-| `authorized_router = None` por defecto en Testnet | Bajo | Activar antes de Mainnet |
+| Refunds en campañas canceladas | ✅ Resuelto (H1) | `claim_refund` pull-based |
+| Sobrescritura de evidencia | ✅ Resuelto (H3) | `release_final` con `expected_evidence` |
+| Pause de emergencia | ✅ Resuelto (H4) | `pause_vault` / `unpause_vault` |
+| Milestone 100% | ✅ Resuelto (H2) | Cap de 90% vía `MAX_MILESTONE_PERCENTAGE` |
+| Admin centralizado | ⚠️ Mitigado (H5) | `governance-account` multisig; escalar a 2-de-3 antes de Mainnet |
+| Datos de fundación on-chain | ✅ Resuelto (H6) | `email_hash` en lugar de email |
+| Sin Wasm upgrade path | ⚠️ Decisión de diseño | Reglas inmutables; si se requiere, timelock post-Demo |
+| `authorized_router = None` por defecto | ⚠️ Intencional para demos | Activar con `bootstrap.mjs` antes de Mainnet |
 
 ---
 
@@ -601,6 +588,7 @@ Consulta [`docs/known-limitations.md`](./docs/known-limitations.md) para el deta
 - [Stellar Docs — Build](https://developers.stellar.org/docs/build)
 - [Stellar Docs — Authorization](https://developers.stellar.org/docs/learn/fundamentals/contract-development/authorization)
 - [Stellar Docs — Contract Invoker Auth](https://developers.stellar.org/docs/learn/fundamentals/contract-development/authorization#contract-invoker)
+- [CAP-71: Address-bound Soroban Authorization](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0071.md)
 - [Soroban SDK 29.0.1](https://crates.io/crates/soroban-sdk/29.0.1)
 - [Differential Tests with Test Snapshots](https://developers.stellar.org/docs/build/guides/testing/differential-tests-with-test-snapshots/)
 - [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
