@@ -44,6 +44,7 @@ export type NonprofitMeta = Socials & {
   display_name: string | null;
   description: string | null;
   logo_path: string | null;
+  login_method?: string | null;
 };
 
 export type CampaignMeta = { campaign_id: number; cover_path: string | null; gallery: string[] };
@@ -69,7 +70,7 @@ export async function listCampaignMeta(): Promise<Map<string, CampaignMeta>> {
 export async function getNonprofitMeta(address: string): Promise<NonprofitMeta | null> {
   const { data, error } = await supabase
     .from("bitajon_nonprofit_meta")
-    .select("address, display_name, description, logo_path, website, instagram, facebook, tiktok, x, whatsapp")
+    .select("address, display_name, description, logo_path, website, instagram, facebook, tiktok, x, whatsapp, login_method")
     .eq("registry", REGISTRY.nonprofits)
     .eq("address", address)
     .maybeSingle();
@@ -192,7 +193,7 @@ export async function saveCampaignMedia(
 export type NonprofitProfileInput = Socials & { display_name?: string; description?: string; logo?: File | null; keepLogo?: string | null };
 
 /** `target`: fundación a editar (por defecto la propia; el admin puede editar cualquiera). */
-export async function saveNonprofitProfile(signer: MessageSigner, p: NonprofitProfileInput, target?: string) {
+export async function saveNonprofitProfile(signer: MessageSigner, p: NonprofitProfileInput & { login_method?: string }, target?: string) {
   const scope = { registry: REGISTRY.nonprofits, ...(target ? { address: target } : {}) };
   const logo = p.logo ? (await uploadFiles(signer, "logo", [await prepareImage(p.logo, 600)], scope))[0].path : (p.keepLogo ?? null);
   const { logo: _l, keepLogo: _k, ...rest } = p;
@@ -206,8 +207,77 @@ export async function saveRut(signer: MessageSigner, file: File) {
   return call<{ rut_sha256: string }>(signer, "save-rut", { ...scope, rut_path: u.path });
 }
 
-export async function getRutUrl(signer: MessageSigner, nonprofit: string) {
-  return call<{ url: string | null; rut_sha256?: string }>(signer, "rut-url", { registry: REGISTRY.nonprofits, address: nonprofit });
+/** Datos privados de una fundación (RUT, correo, wallet de retiro). Solo para admins. */
+export async function getNonprofitPrivate(signer: MessageSigner, nonprofit: string) {
+  return call<{ url: string | null; rut_sha256?: string | null; email?: string | null; payout_wallet?: string | null }>(signer, "nonprofit-private", {
+    registry: REGISTRY.nonprofits,
+    address: nonprofit,
+  });
+}
+export const getRutUrl = getNonprofitPrivate;
+
+/** Correo de contacto (en la cadena solo queda su hash) y/o wallet a la que la fundación retira fondos. */
+export async function savePrivate(signer: MessageSigner, data: { email?: string; payout_wallet?: string | null }) {
+  return call<{ ok: true }>(signer, "save-private", { registry: REGISTRY.nonprofits, ...data });
+}
+
+export async function getMyPrivate(signer: MessageSigner) {
+  return call<{ email?: string | null; payout_wallet?: string | null; rut_sha256?: string | null }>(signer, "my-private", {
+    registry: REGISTRY.nonprofits,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin (firma la llave del equipo en el servidor)                      */
+/* ------------------------------------------------------------------ */
+
+export type AdminOp =
+  | { op: "approve" | "revoke"; nonprofit: string }
+  | { op: "pause" | "unpause"; campaign_id: number }
+  | { op: "set-verifier"; campaign_id: number; verifier?: string }
+  | { op: "release-final"; campaign_id: number; expected_evidence: string }
+  | { op: "add-admin"; address: string; label?: string }
+  | { op: "remove-admin"; address: string };
+
+/**
+ * Las acciones de admin las firma la llave del equipo, que es firmante del governance-account
+ * (el admin multisig de los contratos) y verificadora de las bóvedas. La wallet del admin solo
+ * firma un mensaje para probar que es admin; no paga comisiones.
+ */
+export async function adminAction(signer: MessageSigner, action: AdminOp) {
+  return call<{ hash?: string; ok?: boolean; pending?: boolean }>(signer, "admin", { registry: REGISTRY.nonprofits, ...action });
+}
+
+export type TeamInfo = { address: string; public_key_hex: string; governance: string | null; is_signer: boolean; funded: boolean };
+
+async function publicCall<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ ...body, action }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string } & T;
+  if (!res.ok) throw new BitajonError(json.error || `Error ${res.status}`);
+  return json;
+}
+
+/** Cuenta del equipo (verificadora de las bóvedas) y si ya es firmante del governance. */
+export function getTeamInfo(): Promise<TeamInfo> {
+  return publicCall<TeamInfo>("team-info", { registry: REGISTRY.nonprofits });
+}
+
+export type XlmPrice = { usd: number; cop: number; updated_at: string; source: string; stale?: boolean };
+
+/** Precio del XLM en USD y COP (CoinGecko, con caché de 5 min en el servidor). */
+export function getXlmPrice(): Promise<XlmPrice> {
+  return publicCall<XlmPrice>("price");
+}
+
+/** Admins de BITAJÓN para este despliegue (lista pública de direcciones). */
+export async function listAdmins(): Promise<{ address: string; label: string | null }[]> {
+  const { data, error } = await supabase.from("bitajon_admins").select("address, label").eq("registry", REGISTRY.nonprofits);
+  if (error) throw error;
+  return data ?? [];
 }
 
 async function sha256HexOf(data: ArrayBuffer | Uint8Array): Promise<string> {

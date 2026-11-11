@@ -1,8 +1,8 @@
 {
   "name": "bitajon-frontend",
   "private": true,
-  "version": "0.1.0",
-  "description": "Frontend de BITAJÓN: donaciones con trazabilidad on-chain en Stellar (Thriving Stellar).",
+  "version": "0.2.0",
+  "description": "Frontend de BITAJÓN: donaciones con trazabilidad on-chain en Stellar.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -15,20 +15,28 @@
     "sync:bindings": "node scripts/sync-bindings.mjs",
     "dev:demo": "vite --mode demo",
     "build:demo": "tsc --noEmit && vite build --mode demo",
-    "seed:demo": "node scripts/seed-demo.mjs",
-    "seed:media": "node scripts/seed-media.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
+    "@albedo-link/intent": "^0.13.0",
+    "@bluxcc/core": "^0.3.10",
+    "@bluxcc/react": "^0.3.10",
+    "@ledgerhq/hw-app-str": "^7.9.0",
+    "@lobstrco/signer-extension-api": "^1.0.0-beta.0",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^17.4.0",
     "@supabase/supabase-js": "^2.119.0",
     "@tanstack/react-query": "^5.106.1",
+    "@walletconnect/core": "^2.26.0",
+    "@walletconnect/sign-client": "^2.26.0",
     "buffer": "^6.0.3",
     "lucide-react": "^1.69.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.4",

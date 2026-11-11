@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { CONTRACTS } from "../config";
 import { asBigInt, asString, fetchEvents, fetchIndexedEvents, isEvent, syncIndexedEvents, type ChainEvent } from "../lib/events";
 import { getNativeBalance } from "../lib/horizon";
-import { getEvidenceRecords, getNonprofitMeta, listCampaignMeta } from "../lib/offchain";
+import { getEvidenceRecords, getNonprofitMeta, getTeamInfo, listCampaignMeta } from "../lib/offchain";
 import { getCampaignView, getFeeBps, getProfile, listCampaigns, quote } from "../lib/stellar";
 
 export const qk = {
@@ -92,6 +92,11 @@ export function useQuote(gross: bigint | null) {
   });
 }
 
+/** Cuenta del equipo de BITAJÓN: verificadora de las bóvedas y firmante del admin multisig. */
+export function useTeamInfo() {
+  return useQuery({ queryKey: ["team-info"], queryFn: getTeamInfo, staleTime: 60_000 });
+}
+
 export function useBalance(address: string | null) {
   return useQuery({
     queryKey: qk.balance(address ?? ""),
@@ -151,7 +156,7 @@ export type Donation = {
 
 export type Milestone = {
   campaignId: bigint;
-  kind: "created" | "vault" | "initial" | "evidence" | "final" | "cancelled";
+  kind: "created" | "vault" | "initial" | "evidence" | "final" | "cancelled" | "paused" | "unpaused";
   amount?: bigint;
   at: string;
   txHash: string;
@@ -180,6 +185,8 @@ const MILESTONE_EVENTS: [string, Milestone["kind"]][] = [
   ["EvidenceSubmitted", "evidence"],
   ["FinalFundsReleased", "final"],
   ["CampaignCancelled", "cancelled"],
+  ["VaultPaused", "paused"],
+  ["VaultUnpaused", "unpaused"],
 ];
 
 export function milestonesFrom(events: ChainEvent[] | undefined, campaignId: bigint): Milestone[] {
@@ -198,6 +205,20 @@ export function milestonesFrom(events: ChainEvent[] | undefined, campaignId: big
     });
   }
   return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+export type Refund = { campaignId: bigint; donor: string; amount: bigint; at: string; txHash: string };
+
+export function refundsFrom(events: ChainEvent[] | undefined): Refund[] {
+  return (events ?? [])
+    .filter((e) => isEvent(e, "RefundClaimed"))
+    .map((e) => ({
+      campaignId: asBigInt(e.topics[1] ?? e.data.campaign_id),
+      donor: asString(e.data.donor),
+      amount: asBigInt(e.data.amount),
+      at: e.closedAt,
+      txHash: e.txHash,
+    }));
 }
 
 export type RegisteredNonprofit = { address: string; legalName: string; at: string };
@@ -227,6 +248,7 @@ export function useRefreshAll() {
         qc.invalidateQueries({ queryKey: qk.campaignMeta }),
         qc.invalidateQueries({ queryKey: ["nonprofit-meta"] }),
         qc.invalidateQueries({ queryKey: ["evidence"] }),
+        qc.invalidateQueries({ queryKey: ["team-info"] }),
       ];
       if (campaignId !== undefined) tasks.push(qc.invalidateQueries({ queryKey: qk.campaign(String(campaignId)) }));
       await Promise.all(tasks);

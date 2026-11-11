@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
+import { tr } from "../lib/i18n";
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <Link to="/" className="group flex items-center gap-2.5" aria-label="BITAJÓN, inicio">
+    <Link to="/" className="group flex items-center gap-2.5" aria-label={tr("BITAJÓN, inicio", "BITAJÓN, home")}>
       <img src="/brand/mark.png" alt="" className="h-8 w-auto transition group-hover:scale-105" width={60} height={32} />
       {!compact && (
         <span className="flex flex-col leading-none">

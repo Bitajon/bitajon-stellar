@@ -10,7 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_CAMPAIGN_REGISTRY_ID?: string;
   readonly VITE_CAMPAIGN_VAULT_ID?: string;
   readonly VITE_DONATION_ROUTER_ID?: string;
-  readonly VITE_ADMIN_ADDRESS?: string;
+  readonly VITE_GOVERNANCE_ID?: string;
+  readonly VITE_BLUX_APP_ID?: string;
   readonly VITE_TOKEN_ADDRESS?: string;
   readonly VITE_TOKEN_SYMBOL?: string;
   readonly VITE_TOKEN_DECIMALS?: string;
