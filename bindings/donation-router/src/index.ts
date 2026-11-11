@@ -46,12 +46,16 @@ export interface QuoteResult {
 
 
 
+
+
 /**
- * Defines the shared error codes used across all smart contracts in the workspace.
+ * Shared error codes used across all contracts in the workspace.
  * 
- * Error codes **must not be renumbered**: external consumers (frontend, indexers,
- * monitoring, audit reports) rely on stable discriminants. Gaps in the sequence
- * indicate reserved codes. New codes MUST be appended at the end.
+ * # Stability Contract
+ * Error codes **must not be renumbered**. External consumers (frontend,
+ * indexers, monitoring dashboards, audit reports) rely on stable numeric
+ * discriminants. Gaps in the sequence indicate reserved codes. New codes
+ * MUST be appended at the end.
  */
 export const Errors = {
   1: {message:"Unauthorized"},
@@ -63,6 +67,13 @@ export const Errors = {
   8: {message:"EvidenceNotSubmitted"},
   11: {message:"InvalidAmount"},
   12: {message:"InvalidDeadline"},
+  /**
+   * The milestone percentage is outside the allowed range
+   * (`MIN_MILESTONE_PERCENTAGE..=MAX_MILESTONE_PERCENTAGE`).
+   * 
+   * The upper bound (90%) guarantees that at least 10% of the target
+   * remains tied to evidence validation.
+   */
   13: {message:"InvalidMilestonePercentage"},
   16: {message:"FinalAlreadyReleased"},
   18: {message:"NotVaultAdmin"},
@@ -73,11 +84,31 @@ export const Errors = {
   23: {message:"VaultFinalized"},
   24: {message:"InvalidEvidence"},
   25: {message:"InvalidFeeBps"},
+  26: {message:"NotAuthorizedRouter"},
   /**
-   * The vault is configured with an `authorized_router` and the immediate
-   * caller is not that router. Direct deposits are rejected.
+   * Refund not available: campaign still active or initial release done.
    */
-  26: {message:"NotAuthorizedRouter"}
+  27: {message:"RefundNotAvailable"},
+  /**
+   * The donor has no contribution to refund.
+   */
+  28: {message:"NothingToRefund"},
+  /**
+   * Provided evidence hash does not match the stored one.
+   */
+  29: {message:"InvalidEvidenceHash"},
+  /**
+   * Caller is not the configured verifier.
+   */
+  30: {message:"NotVerifier"},
+  /**
+   * Caller is not the pending admin.
+   */
+  31: {message:"NotPendingAdmin"},
+  /**
+   * The vault is paused; deposits are blocked.
+   */
+  32: {message:"VaultPaused"}
 }
 
 export interface Client {
@@ -96,29 +127,41 @@ export interface Client {
 
   /**
    * Construct and simulate a donate transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Routes a donation through the platform.
+   * Routes a donation through the platform in a single atomic transaction.
+   * 
+   * # Atomicity
+   * The fee transfer and the vault deposit happen in the same
+   * transaction. If either fails, the entire transaction reverts
+   * (Soroban protocol-level atomicity). The donor is never partially
+   * charged.
    * 
    * # Flow
-   * 1. Compute `fee_amount = gross * fee_bps / 10_000` and `net_amount = gross - fee`.
-   * 2. If `fee_amount > 0`, transfer the fee from `donor` to `treasury`.
-   * The token address is read from the vault's cached state.
-   * 3. Forward `net_amount` to the vault via `vault.deposit(campaign_id, donor, net)`.
+   * 1. Compute `fee_amount = gross * fee_bps / 10_000` and
+   * `net_amount = gross - fee_amount`.
+   * 2. If `fee_amount > 0`, read the vault state to get the token, then
+   * transfer the fee from `donor` to `treasury`. If the fee is zero,
+   * skip the read (optimization for the current deployment where
+   * `fee_bps = 0`).
+   * 3. Call `vault.deposit(campaign_id, donor, net_amount)`. The vault
+   * validates the campaign, transfers the net amount, and releases
+   * the initial milestone if the target is reached.
    * 
-   * Atomicity: if any step fails, the entire transaction reverts and no
-   * funds move.
-   * 
-   * # Arguments
-   * * `campaign_id` - The ID of the campaign.
-   * * `donor` - The address authorizing and paying for the donation.
-   * * `amount` - The gross amount to donate (fee is deducted from this).
+   * # Authorization
+   * * `donor` must authorize this call.
+   * * If the vault has `authorized_router` configured, this router must
+   * be that address (it is, by definition).
    * 
    * # Errors
    * * `InvalidAmount` if `amount <= 0`.
-   * * `Unauthorized` if the router has not been initialized with a vault.
-   * * All vault-side errors propagate unchanged (e.g. `CampaignNotFound`,
-   * `CampaignExpired`, `DepositExceedsTarget`, `VaultFinalized`).
+   * * Vault errors propagate unchanged: `CampaignNotFound`
    */
   donate: ({campaign_id, donor, amount}: {campaign_id: u64, donor: string, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the current admin.
+   */
+  get_admin: (options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
   /**
    * Construct and simulate a get_fee_bps transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -127,21 +170,41 @@ export interface Client {
   get_fee_bps: (options?: MethodOptions) => Promise<AssembledTransaction<u32>>
 
   /**
-   * Construct and simulate a get_treasury transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Returns the current treasury address.
+   * Construct and simulate a accept_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Accepts the pending admin role.
+   * 
+   * # Authorization
+   * Only the pending admin can accept.
    * 
    * # Errors
-   * * `Unauthorized` if the contract has not been initialized.
+   * * `Unauthorized` if there is no pending admin.
+   */
+  accept_admin: (options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_treasury transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the current treasury address.
    */
   get_treasury: (options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
   /**
-   * Construct and simulate a update_fee_bps transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Updates the platform fee. Only callable by the admin.
+   * Construct and simulate a propose_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Proposes a new admin. Must be accepted by the proposed admin.
    * 
-   * # Arguments
-   * * `admin` - The admin address (must authorize).
-   * * `new_fee_bps` - The new fee in basis points. Must be <= `MAX_FEE_BPS`.
+   * # Authorization
+   * Only the current admin can propose.
+   * 
+   * # Errors
+   * * `Unauthorized` if the caller is not the current admin.
+   */
+  propose_admin: ({admin, new_admin}: {admin: string, new_admin: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a update_fee_bps transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Updates the platform fee.
+   * 
+   * # Authorization
+   * Only the admin can update the fee.
    * 
    * # Errors
    * * `Unauthorized` if the caller is not the admin.
@@ -151,16 +214,27 @@ export interface Client {
 
   /**
    * Construct and simulate a update_treasury transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Updates the treasury address. Only callable by the admin.
+   * Updates the treasury address.
    * 
-   * # Arguments
-   * * `admin` - The admin address (must authorize).
-   * * `new_treasury` - The new treasury address.
+   * # Authorization
+   * Only the admin can update the treasury.
    * 
    * # Errors
    * * `Unauthorized` if the caller is not the admin.
    */
   update_treasury: ({admin, new_treasury}: {admin: string, new_treasury: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_pending_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the pending admin, if any.
+   */
+  get_pending_admin: (options?: MethodOptions) => Promise<AssembledTransaction<Option<string>>>
+
+  /**
+   * Construct and simulate a get_campaign_vault transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the Campaign Vault address.
+   */
+  get_campaign_vault: (options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
 }
 export class Client extends ContractClient {
@@ -184,25 +258,37 @@ export class Client extends ContractClient {
     super(
       new ContractSpec([ "AAAAAQAAACtSZXN1bHQgb2YgYSBmZWUgcXVvdGUsIHJldHVybmVkIGJ5IGBxdW90ZWAuAAAAAAAAAAALUXVvdGVSZXN1bHQAAAAAAwAAAAAAAAAKZmVlX2Ftb3VudAAAAAAACwAAAAAAAAAMZ3Jvc3NfYW1vdW50AAAACwAAAAAAAAAKbmV0X2Ftb3VudAAAAAAACw==",
         "AAAAAAAAAQNSZXR1cm5zIHRoZSBmZWUgYnJlYWtkb3duIGZvciBhIGdpdmVuIGdyb3NzIGFtb3VudCB3aXRob3V0IGV4ZWN1dGluZwphIGRvbmF0aW9uLiBVc2VmdWwgZm9yIFVJIHByZXZpZXdzLgoKIyBBcmd1bWVudHMKKiBgZ3Jvc3NfYW1vdW50YCAtIFRoZSBncm9zcyBhbW91bnQgdGhlIGRvbm9yIGlzIGNvbnNpZGVyaW5nLgoKIyBSZXR1cm5zCkEgYFF1b3RlUmVzdWx0YCB3aXRoIGBncm9zc19hbW91bnRgLCBgZmVlX2Ftb3VudGAsIGFuZCBgbmV0X2Ftb3VudGAuAAAAAAVxdW90ZQAAAAAAAAEAAAAAAAAADGdyb3NzX2Ftb3VudAAAAAsAAAABAAAH0AAAAAtRdW90ZVJlc3VsdAA=",
-        "AAAAAAAAA1lSb3V0ZXMgYSBkb25hdGlvbiB0aHJvdWdoIHRoZSBwbGF0Zm9ybS4KCiMgRmxvdwoxLiBDb21wdXRlIGBmZWVfYW1vdW50ID0gZ3Jvc3MgKiBmZWVfYnBzIC8gMTBfMDAwYCBhbmQgYG5ldF9hbW91bnQgPSBncm9zcyAtIGZlZWAuCjIuIElmIGBmZWVfYW1vdW50ID4gMGAsIHRyYW5zZmVyIHRoZSBmZWUgZnJvbSBgZG9ub3JgIHRvIGB0cmVhc3VyeWAuClRoZSB0b2tlbiBhZGRyZXNzIGlzIHJlYWQgZnJvbSB0aGUgdmF1bHQncyBjYWNoZWQgc3RhdGUuCjMuIEZvcndhcmQgYG5ldF9hbW91bnRgIHRvIHRoZSB2YXVsdCB2aWEgYHZhdWx0LmRlcG9zaXQoY2FtcGFpZ25faWQsIGRvbm9yLCBuZXQpYC4KCkF0b21pY2l0eTogaWYgYW55IHN0ZXAgZmFpbHMsIHRoZSBlbnRpcmUgdHJhbnNhY3Rpb24gcmV2ZXJ0cyBhbmQgbm8KZnVuZHMgbW92ZS4KCiMgQXJndW1lbnRzCiogYGNhbXBhaWduX2lkYCAtIFRoZSBJRCBvZiB0aGUgY2FtcGFpZ24uCiogYGRvbm9yYCAtIFRoZSBhZGRyZXNzIGF1dGhvcml6aW5nIGFuZCBwYXlpbmcgZm9yIHRoZSBkb25hdGlvbi4KKiBgYW1vdW50YCAtIFRoZSBncm9zcyBhbW91bnQgdG8gZG9uYXRlIChmZWUgaXMgZGVkdWN0ZWQgZnJvbSB0aGlzKS4KCiMgRXJyb3JzCiogYEludmFsaWRBbW91bnRgIGlmIGBhbW91bnQgPD0gMGAuCiogYFVuYXV0aG9yaXplZGAgaWYgdGhlIHJvdXRlciBoYXMgbm90IGJlZW4gaW5pdGlhbGl6ZWQgd2l0aCBhIHZhdWx0LgoqIEFsbCB2YXVsdC1zaWRlIGVycm9ycyBwcm9wYWdhdGUgdW5jaGFuZ2VkIChlLmcuIGBDYW1wYWlnbk5vdEZvdW5kYCwKYENhbXBhaWduRXhwaXJlZGAsIGBEZXBvc2l0RXhjZWVkc1RhcmdldGAsIGBWYXVsdEZpbmFsaXplZGApLgAAAAAAAAZkb25hdGUAAAAAAAMAAAAAAAAAC2NhbXBhaWduX2lkAAAAAAYAAAAAAAAABWRvbm9yAAAAAAAAEwAAAAAAAAAGYW1vdW50AAAAAAALAAAAAA==",
+        "AAAAAAAABABSb3V0ZXMgYSBkb25hdGlvbiB0aHJvdWdoIHRoZSBwbGF0Zm9ybSBpbiBhIHNpbmdsZSBhdG9taWMgdHJhbnNhY3Rpb24uCgojIEF0b21pY2l0eQpUaGUgZmVlIHRyYW5zZmVyIGFuZCB0aGUgdmF1bHQgZGVwb3NpdCBoYXBwZW4gaW4gdGhlIHNhbWUKdHJhbnNhY3Rpb24uIElmIGVpdGhlciBmYWlscywgdGhlIGVudGlyZSB0cmFuc2FjdGlvbiByZXZlcnRzCihTb3JvYmFuIHByb3RvY29sLWxldmVsIGF0b21pY2l0eSkuIFRoZSBkb25vciBpcyBuZXZlciBwYXJ0aWFsbHkKY2hhcmdlZC4KCiMgRmxvdwoxLiBDb21wdXRlIGBmZWVfYW1vdW50ID0gZ3Jvc3MgKiBmZWVfYnBzIC8gMTBfMDAwYCBhbmQKYG5ldF9hbW91bnQgPSBncm9zcyAtIGZlZV9hbW91bnRgLgoyLiBJZiBgZmVlX2Ftb3VudCA+IDBgLCByZWFkIHRoZSB2YXVsdCBzdGF0ZSB0byBnZXQgdGhlIHRva2VuLCB0aGVuCnRyYW5zZmVyIHRoZSBmZWUgZnJvbSBgZG9ub3JgIHRvIGB0cmVhc3VyeWAuIElmIHRoZSBmZWUgaXMgemVybywKc2tpcCB0aGUgcmVhZCAob3B0aW1pemF0aW9uIGZvciB0aGUgY3VycmVudCBkZXBsb3ltZW50IHdoZXJlCmBmZWVfYnBzID0gMGApLgozLiBDYWxsIGB2YXVsdC5kZXBvc2l0KGNhbXBhaWduX2lkLCBkb25vciwgbmV0X2Ftb3VudClgLiBUaGUgdmF1bHQKdmFsaWRhdGVzIHRoZSBjYW1wYWlnbiwgdHJhbnNmZXJzIHRoZSBuZXQgYW1vdW50LCBhbmQgcmVsZWFzZXMKdGhlIGluaXRpYWwgbWlsZXN0b25lIGlmIHRoZSB0YXJnZXQgaXMgcmVhY2hlZC4KCiMgQXV0aG9yaXphdGlvbgoqIGBkb25vcmAgbXVzdCBhdXRob3JpemUgdGhpcyBjYWxsLgoqIElmIHRoZSB2YXVsdCBoYXMgYGF1dGhvcml6ZWRfcm91dGVyYCBjb25maWd1cmVkLCB0aGlzIHJvdXRlciBtdXN0CmJlIHRoYXQgYWRkcmVzcyAoaXQgaXMsIGJ5IGRlZmluaXRpb24pLgoKIyBFcnJvcnMKKiBgSW52YWxpZEFtb3VudGAgaWYgYGFtb3VudCA8PSAwYC4KKiBWYXVsdCBlcnJvcnMgcHJvcGFnYXRlIHVuY2hhbmdlZDogYENhbXBhaWduTm90Rm91bmRgAAAABmRvbmF0ZQAAAAAAAwAAAAAAAAALY2FtcGFpZ25faWQAAAAABgAAAAAAAAAFZG9ub3IAAAAAAAATAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAA",
+        "AAAAAAAAABpSZXR1cm5zIHRoZSBjdXJyZW50IGFkbWluLgAAAAAACWdldF9hZG1pbgAAAAAAAAAAAAABAAAAEw==",
         "AAAAAAAAAChSZXR1cm5zIHRoZSBjdXJyZW50IGZlZSBpbiBiYXNpcyBwb2ludHMuAAAAC2dldF9mZWVfYnBzAAAAAAAAAAABAAAABA==",
-        "AAAAAAAAAGpSZXR1cm5zIHRoZSBjdXJyZW50IHRyZWFzdXJ5IGFkZHJlc3MuCgojIEVycm9ycwoqIGBVbmF1dGhvcml6ZWRgIGlmIHRoZSBjb250cmFjdCBoYXMgbm90IGJlZW4gaW5pdGlhbGl6ZWQuAAAAAAAMZ2V0X3RyZWFzdXJ5AAAAAAAAAAEAAAAT",
-        "AAAAAAAAAc1Jbml0aWFsaXplcyB0aGUgcm91dGVyIHdpdGggYWRtaW4sIHRyZWFzdXJ5LCB2YXVsdCwgYW5kIGZlZSBjb25maWd1cmF0aW9uLgoKIyBBcmd1bWVudHMKKiBgYWRtaW5gIC0gVGhlIGFkZHJlc3MgYXV0aG9yaXplZCB0byB1cGRhdGUgZmVlIGFuZCB0cmVhc3VyeS4KKiBgdHJlYXN1cnlgIC0gVGhlIGFkZHJlc3MgdGhhdCByZWNlaXZlcyBwbGF0Zm9ybSBmZWVzLgoqIGBjYW1wYWlnbl92YXVsdGAgLSBUaGUgYWRkcmVzcyBvZiB0aGUgYGNhbXBhaWduLXZhdWx0YCBjb250cmFjdC4KKiBgZmVlX2Jwc2AgLSBJbml0aWFsIGZlZSBpbiBiYXNpcyBwb2ludHMuIE11c3QgYmUgPD0gYE1BWF9GRUVfQlBTYC4KCiMgRXJyb3JzCiogYFVuYXV0aG9yaXplZGAgaWYgdGhlIGNvbnRyYWN0IGhhcyBhbHJlYWR5IGJlZW4gaW5pdGlhbGl6ZWQuCiogYEludmFsaWRGZWVCcHNgIGlmIGBmZWVfYnBzID4gTUFYX0ZFRV9CUFNgLgAAAAAAAA1fX2NvbnN0cnVjdG9yAAAAAAAABAAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAh0cmVhc3VyeQAAABMAAAAAAAAADmNhbXBhaWduX3ZhdWx0AAAAAAATAAAAAAAAAAdmZWVfYnBzAAAAAAQAAAAA",
-        "AAAAAAAAAShVcGRhdGVzIHRoZSBwbGF0Zm9ybSBmZWUuIE9ubHkgY2FsbGFibGUgYnkgdGhlIGFkbWluLgoKIyBBcmd1bWVudHMKKiBgYWRtaW5gIC0gVGhlIGFkbWluIGFkZHJlc3MgKG11c3QgYXV0aG9yaXplKS4KKiBgbmV3X2ZlZV9icHNgIC0gVGhlIG5ldyBmZWUgaW4gYmFzaXMgcG9pbnRzLiBNdXN0IGJlIDw9IGBNQVhfRkVFX0JQU2AuCgojIEVycm9ycwoqIGBVbmF1dGhvcml6ZWRgIGlmIHRoZSBjYWxsZXIgaXMgbm90IHRoZSBhZG1pbi4KKiBgSW52YWxpZEZlZUJwc2AgaWYgYG5ld19mZWVfYnBzID4gTUFYX0ZFRV9CUFNgLgAAAA51cGRhdGVfZmVlX2JwcwAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtuZXdfZmVlX2JwcwAAAAAEAAAAAA==",
-        "AAAAAAAAAN5VcGRhdGVzIHRoZSB0cmVhc3VyeSBhZGRyZXNzLiBPbmx5IGNhbGxhYmxlIGJ5IHRoZSBhZG1pbi4KCiMgQXJndW1lbnRzCiogYGFkbWluYCAtIFRoZSBhZG1pbiBhZGRyZXNzIChtdXN0IGF1dGhvcml6ZSkuCiogYG5ld190cmVhc3VyeWAgLSBUaGUgbmV3IHRyZWFzdXJ5IGFkZHJlc3MuCgojIEVycm9ycwoqIGBVbmF1dGhvcml6ZWRgIGlmIHRoZSBjYWxsZXIgaXMgbm90IHRoZSBhZG1pbi4AAAAAAA91cGRhdGVfdHJlYXN1cnkAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAxuZXdfdHJlYXN1cnkAAAATAAAAAA==",
+        "AAAAAAAAAIxBY2NlcHRzIHRoZSBwZW5kaW5nIGFkbWluIHJvbGUuCgojIEF1dGhvcml6YXRpb24KT25seSB0aGUgcGVuZGluZyBhZG1pbiBjYW4gYWNjZXB0LgoKIyBFcnJvcnMKKiBgVW5hdXRob3JpemVkYCBpZiB0aGVyZSBpcyBubyBwZW5kaW5nIGFkbWluLgAAAAxhY2NlcHRfYWRtaW4AAAAAAAAAAA==",
+        "AAAAAAAAACVSZXR1cm5zIHRoZSBjdXJyZW50IHRyZWFzdXJ5IGFkZHJlc3MuAAAAAAAADGdldF90cmVhc3VyeQAAAAAAAAABAAAAEw==",
+        "AAAAAAAAAddJbml0aWFsaXplcyB0aGUgcm91dGVyIHdpdGggYWRtaW4sIHRyZWFzdXJ5LCB2YXVsdCwgYW5kIGZlZS4KCiMgQXJndW1lbnRzCiogYGFkbWluYCAtIEFkZHJlc3MgYXV0aG9yaXplZCB0byBjb25maWd1cmUgdGhlIHJvdXRlci4gQ2FuIGJlIGFuCkVPQSBvciBhIGBnb3Zlcm5hbmNlLWFjY291bnRgLgoqIGB0cmVhc3VyeWAgLSBBZGRyZXNzIHRoYXQgcmVjZWl2ZXMgcGxhdGZvcm0gZmVlcy4KKiBgY2FtcGFpZ25fdmF1bHRgIC0gQWRkcmVzcyBvZiB0aGUgQ2FtcGFpZ24gVmF1bHQgY29udHJhY3QuCiogYGZlZV9icHNgIC0gSW5pdGlhbCBmZWUgaW4gYmFzaXMgcG9pbnRzLiBNdXN0IGJlIGA8PSBNQVhfRkVFX0JQU2AuCgojIEVycm9ycwoqIGBVbmF1dGhvcml6ZWRgIGlmIHRoZSBjb250cmFjdCBoYXMgYWxyZWFkeSBiZWVuIGluaXRpYWxpemVkLgoqIGBJbnZhbGlkRmVlQnBzYCBpZiBgZmVlX2JwcyA+IE1BWF9GRUVfQlBTYC4AAAAADV9fY29uc3RydWN0b3IAAAAAAAAEAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAACHRyZWFzdXJ5AAAAEwAAAAAAAAAOY2FtcGFpZ25fdmF1bHQAAAAAABMAAAAAAAAAB2ZlZV9icHMAAAAABAAAAAA=",
+        "AAAAAAAAALVQcm9wb3NlcyBhIG5ldyBhZG1pbi4gTXVzdCBiZSBhY2NlcHRlZCBieSB0aGUgcHJvcG9zZWQgYWRtaW4uCgojIEF1dGhvcml6YXRpb24KT25seSB0aGUgY3VycmVudCBhZG1pbiBjYW4gcHJvcG9zZS4KCiMgRXJyb3JzCiogYFVuYXV0aG9yaXplZGAgaWYgdGhlIGNhbGxlciBpcyBub3QgdGhlIGN1cnJlbnQgYWRtaW4uAAAAAAAADXByb3Bvc2VfYWRtaW4AAAAAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAACW5ld19hZG1pbgAAAAAAABMAAAAA",
+        "AAAAAAAAALpVcGRhdGVzIHRoZSBwbGF0Zm9ybSBmZWUuCgojIEF1dGhvcml6YXRpb24KT25seSB0aGUgYWRtaW4gY2FuIHVwZGF0ZSB0aGUgZmVlLgoKIyBFcnJvcnMKKiBgVW5hdXRob3JpemVkYCBpZiB0aGUgY2FsbGVyIGlzIG5vdCB0aGUgYWRtaW4uCiogYEludmFsaWRGZWVCcHNgIGlmIGBuZXdfZmVlX2JwcyA+IE1BWF9GRUVfQlBTYC4AAAAAAA51cGRhdGVfZmVlX2JwcwAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtuZXdfZmVlX2JwcwAAAAAEAAAAAA==",
+        "AAAAAAAAAJFVcGRhdGVzIHRoZSB0cmVhc3VyeSBhZGRyZXNzLgoKIyBBdXRob3JpemF0aW9uCk9ubHkgdGhlIGFkbWluIGNhbiB1cGRhdGUgdGhlIHRyZWFzdXJ5LgoKIyBFcnJvcnMKKiBgVW5hdXRob3JpemVkYCBpZiB0aGUgY2FsbGVyIGlzIG5vdCB0aGUgYWRtaW4uAAAAAAAAD3VwZGF0ZV90cmVhc3VyeQAAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAADG5ld190cmVhc3VyeQAAABMAAAAA",
+        "AAAAAAAAACJSZXR1cm5zIHRoZSBwZW5kaW5nIGFkbWluLCBpZiBhbnkuAAAAAAARZ2V0X3BlbmRpbmdfYWRtaW4AAAAAAAAAAAAAAQAAA+gAAAAT",
+        "AAAAAAAAACNSZXR1cm5zIHRoZSBDYW1wYWlnbiBWYXVsdCBhZGRyZXNzLgAAAAASZ2V0X2NhbXBhaWduX3ZhdWx0AAAAAAAAAAAAAQAAABM=",
+        "AAAABQAAADFFbWl0dGVkIHdoZW4gdGhlIHByb3Bvc2VkIGFkbWluIGFjY2VwdHMgdGhlIHJvbGUuAAAAAAAAAAAAAA1BZG1pbkFjY2VwdGVkAAAAAAAAAQAAAA5hZG1pbl9hY2NlcHRlZAAAAAAAAQAAAAAAAAAJbmV3X2FkbWluAAAAAAAAEwAAAAAAAAAC",
+        "AAAABQAAADRFbWl0dGVkIHdoZW4gdGhlIGN1cnJlbnQgYWRtaW4gcHJvcG9zZXMgYSBzdWNjZXNzb3IuAAAAAAAAAA1BZG1pblByb3Bvc2VkAAAAAAAAAQAAAA5hZG1pbl9wcm9wb3NlZAAAAAAAAgAAAAAAAAAHY3VycmVudAAAAAATAAAAAAAAAAAAAAAIcHJvcG9zZWQAAAATAAAAAAAAAAI=",
         "AAAABQAAAClFbWl0dGVkIHdoZW4gdGhlIHBsYXRmb3JtIGZlZSBpcyB1cGRhdGVkLgAAAAAAAAAAAAANRmVlQnBzVXBkYXRlZAAAAAAAAAEAAAAPZmVlX2Jwc191cGRhdGVkAAAAAAIAAAAAAAAAC29sZF9mZWVfYnBzAAAAAAQAAAAAAAAAAAAAAAtuZXdfZmVlX2JwcwAAAAAEAAAAAAAAAAI=",
         "AAAABQAAAEJFbWl0dGVkIG9uIGV2ZXJ5IHN1Y2Nlc3NmdWwgZG9uYXRpb24gcm91dGVkIHRocm91Z2ggdGhpcyBjb250cmFjdC4AAAAAAAAAAAAORG9uYXRpb25Sb3V0ZWQAAAAAAAEAAAAPZG9uYXRpb25fcm91dGVkAAAAAAUAAAAAAAAAC2NhbXBhaWduX2lkAAAAAAYAAAABAAAAAAAAAAVkb25vcgAAAAAAABMAAAAAAAAAAAAAAAxncm9zc19hbW91bnQAAAALAAAAAAAAAAAAAAAKZmVlX2Ftb3VudAAAAAAACwAAAAAAAAAAAAAACm5ldF9hbW91bnQAAAAAAAsAAAAAAAAAAg==",
         "AAAABQAAAC1FbWl0dGVkIHdoZW4gdGhlIHRyZWFzdXJ5IGFkZHJlc3MgaXMgdXBkYXRlZC4AAAAAAAAAAAAAD1RyZWFzdXJ5VXBkYXRlZAAAAAABAAAAEHRyZWFzdXJ5X3VwZGF0ZWQAAAACAAAAAAAAAAxvbGRfdHJlYXN1cnkAAAATAAAAAAAAAAAAAAAMbmV3X3RyZWFzdXJ5AAAAEwAAAAAAAAAC",
-        "AAAABAAAAS9EZWZpbmVzIHRoZSBzaGFyZWQgZXJyb3IgY29kZXMgdXNlZCBhY3Jvc3MgYWxsIHNtYXJ0IGNvbnRyYWN0cyBpbiB0aGUgd29ya3NwYWNlLgoKRXJyb3IgY29kZXMgKiptdXN0IG5vdCBiZSByZW51bWJlcmVkKio6IGV4dGVybmFsIGNvbnN1bWVycyAoZnJvbnRlbmQsIGluZGV4ZXJzLAptb25pdG9yaW5nLCBhdWRpdCByZXBvcnRzKSByZWx5IG9uIHN0YWJsZSBkaXNjcmltaW5hbnRzLiBHYXBzIGluIHRoZSBzZXF1ZW5jZQppbmRpY2F0ZSByZXNlcnZlZCBjb2Rlcy4gTmV3IGNvZGVzIE1VU1QgYmUgYXBwZW5kZWQgYXQgdGhlIGVuZC4AAAAAAAAAAAVFcnJvcgAAAAAAABQAAAAAAAAADFVuYXV0aG9yaXplZAAAAAEAAAAAAAAAEU5vbnByb2ZpdE5vdEZvdW5kAAAAAAAAAgAAAAAAAAAUTm9ucHJvZml0Tm90QXBwcm92ZWQAAAADAAAAAAAAABpOb25wcm9maXRBbHJlYWR5UmVnaXN0ZXJlZAAAAAAABAAAAAAAAAAQQ2FtcGFpZ25Ob3RGb3VuZAAAAAUAAAAAAAAAEUNhbXBhaWduTm90QWN0aXZlAAAAAAAABgAAAAAAAAAURXZpZGVuY2VOb3RTdWJtaXR0ZWQAAAAIAAAAAAAAAA1JbnZhbGlkQW1vdW50AAAAAAAACwAAAAAAAAAPSW52YWxpZERlYWRsaW5lAAAAAAwAAAAAAAAAGkludmFsaWRNaWxlc3RvbmVQZXJjZW50YWdlAAAAAAANAAAAAAAAABRGaW5hbEFscmVhZHlSZWxlYXNlZAAAABAAAAAAAAAADU5vdFZhdWx0QWRtaW4AAAAAAAASAAAAAAAAABREZXBvc2l0RXhjZWVkc1RhcmdldAAAABMAAAAAAAAAFUNhbXBhaWduQWxyZWFkeUV4aXN0cwAAAAAAABQAAAAAAAAAFUluaXRpYWxSZWxlYXNlTm90RG9uZQAAAAAAABUAAAAAAAAAD0NhbXBhaWduRXhwaXJlZAAAAAAWAAAAAAAAAA5WYXVsdEZpbmFsaXplZAAAAAAAFwAAAAAAAAAPSW52YWxpZEV2aWRlbmNlAAAAABgAAAAAAAAADUludmFsaWRGZWVCcHMAAAAAAAAZAAAAflRoZSB2YXVsdCBpcyBjb25maWd1cmVkIHdpdGggYW4gYGF1dGhvcml6ZWRfcm91dGVyYCBhbmQgdGhlIGltbWVkaWF0ZQpjYWxsZXIgaXMgbm90IHRoYXQgcm91dGVyLiBEaXJlY3QgZGVwb3NpdHMgYXJlIHJlamVjdGVkLgAAAAAAE05vdEF1dGhvcml6ZWRSb3V0ZXIAAAAAGg==" ]),
+        "AAAABAAAAUVTaGFyZWQgZXJyb3IgY29kZXMgdXNlZCBhY3Jvc3MgYWxsIGNvbnRyYWN0cyBpbiB0aGUgd29ya3NwYWNlLgoKIyBTdGFiaWxpdHkgQ29udHJhY3QKRXJyb3IgY29kZXMgKiptdXN0IG5vdCBiZSByZW51bWJlcmVkKiouIEV4dGVybmFsIGNvbnN1bWVycyAoZnJvbnRlbmQsCmluZGV4ZXJzLCBtb25pdG9yaW5nIGRhc2hib2FyZHMsIGF1ZGl0IHJlcG9ydHMpIHJlbHkgb24gc3RhYmxlIG51bWVyaWMKZGlzY3JpbWluYW50cy4gR2FwcyBpbiB0aGUgc2VxdWVuY2UgaW5kaWNhdGUgcmVzZXJ2ZWQgY29kZXMuIE5ldyBjb2RlcwpNVVNUIGJlIGFwcGVuZGVkIGF0IHRoZSBlbmQuAAAAAAAAAAAAAAVFcnJvcgAAAAAAABoAAAAAAAAADFVuYXV0aG9yaXplZAAAAAEAAAAAAAAAEU5vbnByb2ZpdE5vdEZvdW5kAAAAAAAAAgAAAAAAAAAUTm9ucHJvZml0Tm90QXBwcm92ZWQAAAADAAAAAAAAABpOb25wcm9maXRBbHJlYWR5UmVnaXN0ZXJlZAAAAAAABAAAAAAAAAAQQ2FtcGFpZ25Ob3RGb3VuZAAAAAUAAAAAAAAAEUNhbXBhaWduTm90QWN0aXZlAAAAAAAABgAAAAAAAAAURXZpZGVuY2VOb3RTdWJtaXR0ZWQAAAAIAAAAAAAAAA1JbnZhbGlkQW1vdW50AAAAAAAACwAAAAAAAAAPSW52YWxpZERlYWRsaW5lAAAAAAwAAADVVGhlIG1pbGVzdG9uZSBwZXJjZW50YWdlIGlzIG91dHNpZGUgdGhlIGFsbG93ZWQgcmFuZ2UKKGBNSU5fTUlMRVNUT05FX1BFUkNFTlRBR0UuLj1NQVhfTUlMRVNUT05FX1BFUkNFTlRBR0VgKS4KClRoZSB1cHBlciBib3VuZCAoOTAlKSBndWFyYW50ZWVzIHRoYXQgYXQgbGVhc3QgMTAlIG9mIHRoZSB0YXJnZXQKcmVtYWlucyB0aWVkIHRvIGV2aWRlbmNlIHZhbGlkYXRpb24uAAAAAAAAGkludmFsaWRNaWxlc3RvbmVQZXJjZW50YWdlAAAAAAANAAAAAAAAABRGaW5hbEFscmVhZHlSZWxlYXNlZAAAABAAAAAAAAAADU5vdFZhdWx0QWRtaW4AAAAAAAASAAAAAAAAABREZXBvc2l0RXhjZWVkc1RhcmdldAAAABMAAAAAAAAAFUNhbXBhaWduQWxyZWFkeUV4aXN0cwAAAAAAABQAAAAAAAAAFUluaXRpYWxSZWxlYXNlTm90RG9uZQAAAAAAABUAAAAAAAAAD0NhbXBhaWduRXhwaXJlZAAAAAAWAAAAAAAAAA5WYXVsdEZpbmFsaXplZAAAAAAAFwAAAAAAAAAPSW52YWxpZEV2aWRlbmNlAAAAABgAAAAAAAAADUludmFsaWRGZWVCcHMAAAAAAAAZAAAAAAAAABNOb3RBdXRob3JpemVkUm91dGVyAAAAABoAAABEUmVmdW5kIG5vdCBhdmFpbGFibGU6IGNhbXBhaWduIHN0aWxsIGFjdGl2ZSBvciBpbml0aWFsIHJlbGVhc2UgZG9uZS4AAAASUmVmdW5kTm90QXZhaWxhYmxlAAAAAAAbAAAAKFRoZSBkb25vciBoYXMgbm8gY29udHJpYnV0aW9uIHRvIHJlZnVuZC4AAAAPTm90aGluZ1RvUmVmdW5kAAAAABwAAAA1UHJvdmlkZWQgZXZpZGVuY2UgaGFzaCBkb2VzIG5vdCBtYXRjaCB0aGUgc3RvcmVkIG9uZS4AAAAAAAATSW52YWxpZEV2aWRlbmNlSGFzaAAAAAAdAAAAJkNhbGxlciBpcyBub3QgdGhlIGNvbmZpZ3VyZWQgdmVyaWZpZXIuAAAAAAALTm90VmVyaWZpZXIAAAAAHgAAACBDYWxsZXIgaXMgbm90IHRoZSBwZW5kaW5nIGFkbWluLgAAAA9Ob3RQZW5kaW5nQWRtaW4AAAAAHwAAACpUaGUgdmF1bHQgaXMgcGF1c2VkOyBkZXBvc2l0cyBhcmUgYmxvY2tlZC4AAAAAAAtWYXVsdFBhdXNlZAAAAAAg" ]),
       options
     )
   }
   public readonly fromJSON = {
     quote: this.txFromJSON<QuoteResult>,
         donate: this.txFromJSON<null>,
+        get_admin: this.txFromJSON<string>,
         get_fee_bps: this.txFromJSON<u32>,
+        accept_admin: this.txFromJSON<null>,
         get_treasury: this.txFromJSON<string>,
+        propose_admin: this.txFromJSON<null>,
         update_fee_bps: this.txFromJSON<null>,
-        update_treasury: this.txFromJSON<null>
+        update_treasury: this.txFromJSON<null>,
+        get_pending_admin: this.txFromJSON<Option<string>>,
+        get_campaign_vault: this.txFromJSON<string>
   }
 }
