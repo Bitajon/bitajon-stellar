@@ -10,13 +10,21 @@
  *   bun run bootstrap --extend-ttl             # after success, run ./scripts/extend-ttl.sh
  *   bun run bootstrap --from-release v0.2.1    # download wasm from GitHub release, then deploy
  *   bun run bootstrap --from-release v0.2.1 --repo bitajon/bitajon-stellar
+ *   bun run bootstrap --from-release v0.2.1 --salt my-salt
  *
  * Why --from-release:
  *   Stellar Expert verifies a contract by matching its on-chain wasm hash against
- *   the wasm hash published in a GitHub release. If you deploy with a local build,
- *   the hash may differ from the CI build (different Rust/CLI versions) and the
- *   contract shows "Source code: Unavailable". Using --from-release downloads the
- *   CI-built wasm and deploys that, guaranteeing a hash match.
+ *   the wasm published in a GitHub release. If you deploy with a local build, the
+ *   hash may differ from the CI build (different Rust/CLI versions) and the contract
+ *   shows "Source code: Unavailable". Using --from-release downloads the CI-built
+ *   wasm and deploys that, guaranteeing a hash match.
+ *
+ * Why --salt:
+ *   Contract addresses on Soroban are derived from (deployer, wasmName, salt).
+ *   If the salt is deterministic, re-deploying the same wasm from the same deployer
+ *   produces the same address, and Soroban returns "contract already exists".
+ *   We generate a fresh salt per deploy (timestamp + random) so each run deploys
+ *   at new addresses. The salt is logged and saved to .env.testnet.
  */
 
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'node:fs';
@@ -25,7 +33,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawnSync, execSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import {
   Address,
@@ -67,10 +75,6 @@ const log = {
   },
 };
 
-/**
- * Wraps a URL in an OSC 8 hyperlink, so terminals that support it will
- * render it as a clickable link. Falls back to plain text otherwise.
- */
 function link(url) {
   return `\x1b]8;;${url}\x1b\\${url}\x1b]8;;\x1b\\`;
 }
@@ -89,6 +93,7 @@ function parseArgs(argv) {
     extendTtl: false,
     fromRelease: null,
     repo: null,
+    salt: null,
   };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -100,6 +105,7 @@ function parseArgs(argv) {
       case '--extend-ttl': flags.extendTtl = true; break;
       case '--from-release': flags.fromRelease = argv[++i]; break;
       case '--repo': flags.repo = argv[++i]; break;
+      case '--salt': flags.salt = argv[++i]; break;
       default: log.err(`Unknown argument: ${argv[i]}`); process.exit(1);
     }
   }
@@ -137,7 +143,6 @@ async function fundWithFriendbot(publicKey) {
     if (res.ok) {
       log.ok('Friendbot funded the account.');
     } else {
-      // Friendbot returns 400 if the account is already funded. That is fine.
       log.warn(`Friendbot returned HTTP ${res.status}. Continuing anyway.`);
     }
   } catch (e) {
@@ -145,15 +150,7 @@ async function fundWithFriendbot(publicKey) {
   }
 }
 
-/**
- * Downloads all .wasm assets from the GitHub releases whose tag starts with
- * `${refTag}-`, maps each asset name to its crate name, verifies the SHA-256
- * hash, and copies the wasm to WASM_DIR so `deployContract` finds it.
- *
- * Returns the list of downloaded entries: { asset, crate, hash, path }.
- */
 async function downloadWasmFromReleases(refTag, repoOverride) {
-  // Detect the GitHub repo from the origin remote.
   let repo = repoOverride;
   if (!repo) {
     try {
@@ -213,11 +210,6 @@ async function downloadWasmFromReleases(refTag, repoOverride) {
       const sha256 = createHash('sha256').update(bytes).digest('hex');
       log.ok(`  Downloaded (sha256: ${sha256.substring(0, 16)}…)`);
 
-      // Map asset name to crate name. Examples:
-      //   "nonprofit-registry_v0.2.0.wasm" → "nonprofit_registry"
-      //   "campaign-vault_v0.2.0.wasm"     → "campaign_vault"
-      // The version is always after the first underscore, so split('_')[0]
-      // reliably yields the package name with dashes.
       const baseName = asset.name.replace(/\.wasm$/, '');
       const crateName = baseName.split('_')[0].replace(/-/g, '_');
       const destPath = join(WASM_DIR, `${crateName}.wasm`);
@@ -236,7 +228,7 @@ async function downloadWasmFromReleases(refTag, repoOverride) {
   return downloaded;
 }
 
-async function deployContract(server, kp, wasmName, ctorArgs) {
+async function deployContract(server, kp, wasmName, ctorArgs, deploySalt) {
   const wasmPath = join(WASM_DIR, `${wasmName}.wasm`);
   if (!existsSync(wasmPath)) {
     throw new Error(`Wasm not found: ${wasmPath}. Run "stellar contract build" first.`);
@@ -264,10 +256,19 @@ async function deployContract(server, kp, wasmName, ctorArgs) {
   const account2 = await server.getAccount(kp.publicKey());
   const deployerAddress = Address.fromString(kp.publicKey());
 
+  // Include the per-deploy salt so re-deploying from the same deployer with
+  // the same wasmName produces a fresh address, avoiding
+  // "Error(Storage, ExistingValue): contract already exists".
+  const saltBytes = Buffer.concat([
+    kp.rawPublicKey(),
+    Buffer.from(wasmName),
+    Buffer.from(deploySalt),
+  ]);
+
   const createOp = Operation.createCustomContract({
     address: deployerAddress,
     wasmHash: hash(wasmBytes),
-    salt: hash(Buffer.concat([kp.rawPublicKey(), Buffer.from(wasmName)])),
+    salt: hash(saltBytes),
     constructorArgs: ctorArgs,
   });
 
@@ -502,16 +503,21 @@ async function main() {
   if (flags.skipDeploy) log.info('Mode:       SKIP-DEPLOY (reuse IDs from .env.testnet)');
   if (flags.fromRelease) log.info(`Wasm source: GitHub release "${flags.fromRelease}"`);
 
-  // Validate flag combinations early.
   if (flags.fromRelease && flags.skipDeploy) {
     throw new Error('--from-release cannot be combined with --skip-deploy (no deploy will happen)');
   }
+
+  // Unique per-deploy salt. Logged and saved to .env so it is reproducible.
+  // Without a per-deploy salt, re-deploying the same wasm from the same
+  // deployer would produce the same address and Soroban would reject it with
+  // "Error(Storage, ExistingValue): contract already exists".
+  const deploySalt = flags.salt || `${Date.now()}-${randomBytes(4).toString('hex')}`;
+  if (!flags.skipDeploy) log.info(`Deploy salt: ${deploySalt}`);
 
   if (flags.fund) {
     await fundWithFriendbot(deployerPub);
   }
 
-  // If --from-release is set, download the CI-built wasm BEFORE deploying.
   if (flags.fromRelease) {
     log.section('0/5 — Downloading wasm from GitHub release');
     const downloaded = await downloadWasmFromReleases(flags.fromRelease, flags.repo);
@@ -558,24 +564,24 @@ async function main() {
     governanceId = await deployContract(server, kp, 'governance_account', [
       xdr.ScVal.scvVec([xdr.ScVal.scvBytes(deployerPk)]),
       xdr.ScVal.scvU32(1),
-    ]);
+    ], deploySalt);
 
     log.section('2/5 — nonprofit-registry');
     npId = await deployContract(server, kp, 'nonprofit_registry', [
       Address.fromString(governanceId).toScVal(),
-    ]);
+    ], deploySalt);
 
     log.section('3/5 — campaign-registry');
     crId = await deployContract(server, kp, 'campaign_registry', [
       Address.fromString(governanceId).toScVal(),
       Address.fromString(npId).toScVal(),
-    ]);
+    ], deploySalt);
 
     log.section('4/5 — campaign-vault');
     cvId = await deployContract(server, kp, 'campaign_vault', [
       Address.fromString(governanceId).toScVal(),
       Address.fromString(crId).toScVal(),
-    ]);
+    ], deploySalt);
 
     log.section('5/5 — donation-router');
     drId = await deployContract(server, kp, 'donation_router', [
@@ -583,7 +589,7 @@ async function main() {
       Address.fromString(deployerPub).toScVal(),
       Address.fromString(cvId).toScVal(),
       xdr.ScVal.scvU32(flags.feeBps),
-    ]);
+    ], deploySalt);
   }
 
   let routerConfigured = 'no';
@@ -592,7 +598,6 @@ async function main() {
     routerConfigured = 'yes';
   }
 
-  // Backup .env if it exists.
   if (existsSync(ENV_PATH)) {
     const backup = `${ENV_PATH}.backup.${new Date().toISOString().replace(/[:.]/g, '-')}`;
     copyFileSync(ENV_PATH, backup);
@@ -605,6 +610,7 @@ async function main() {
 # Treasury: ${deployerPub}
 # Fee: ${flags.feeBps} bps
 # Mode: ${deployMode}
+# Deploy salt: ${deploySalt}
 
 GOVERNANCE_ID=${governanceId}
 NP_ID=${npId}
@@ -616,6 +622,7 @@ DR_ID=${drId}
 TREASURY=${deployerPub}
 FEE_BPS=${flags.feeBps}
 AUTHORIZED_ROUTER_CONFIGURED=${routerConfigured}
+DEPLOY_SALT=${deploySalt}
 `;
   writeFileSync(ENV_PATH, envContent);
   log.ok(`.env written to ${ENV_PATH}`);
@@ -626,6 +633,7 @@ AUTHORIZED_ROUTER_CONFIGURED=${routerConfigured}
   console.log(`  Treasury:    ${deployerPub}`);
   console.log(`  Fee:         ${flags.feeBps} bps`);
   console.log(`  Mode:        ${deployMode}`);
+  console.log(`  Deploy salt: ${deploySalt}`);
   console.log(`  Router set:  ${routerConfigured}`);
   console.log();
   console.log(`  Contracts:`);
@@ -640,7 +648,6 @@ AUTHORIZED_ROUTER_CONFIGURED=${routerConfigured}
   console.log(`    donation-router:    ${drId}`);
   console.log(`      ${link(explorerUrl(drId))}`);
 
-  // Run extend-ttl.sh automatically if requested.
   if (flags.extendTtl) {
     log.section('Extending TTL on all 5 contracts');
     const ttlScript = join(REPO_ROOT, 'contracts', 'scripts', 'extend-ttl.sh');
