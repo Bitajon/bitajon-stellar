@@ -31,11 +31,11 @@ Ya escogido por el Equipo de frontend
 
 | # | Contrato | Dirección (`C...`) | Rol en el frontend |
 | :--- | :--- | :--- | :--- |
-| 1 | **Governance Account** | `CCQ2VQX3QXE6OXXTVN77XTLKMWFUKW7HJAENIPEELVRIU7JSI2TT47BD` | Multisig admin del protocolo. |
-| 2 | **Nonprofit Registry** | `CAVXPFUWBQ3NCYFIP5TRPMHIOPVFU6QL6GKVHQDG5LAQVNRN6NIONKCY` | Registro/aprobación de fundaciones. |
-| 3 | **Campaign Registry** | `CDMODZCKIUJDWFYKB3M3CI3MMUY6GXNENNRSM7EWKHHWLEP4IHFPT4VC` | Crear/listar campañas. |
-| 4 | **Campaign Vault** | `CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK` | Custodia, depósitos, evidencia, liberaciones, refunds. |
-| 5 | **Donation Router** | `CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS` | Punto de entrada único para donaciones. Aplica el fee. |
+| 1 | **Governance Account** | `CB5EDLYZ27U5JUNYCTLMANIMBV2WQ3DMXJV6AQJ7X43UYQ77EGX62X2U` | Multisig admin del protocolo. |
+| 2 | **Nonprofit Registry** | `CADYPVOA7SUTBVG5IICFNDHQKOXG7VLT6ANCNNOLNDKNFHFJWQ5N3RH2` | Registro/aprobación de fundaciones. |
+| 3 | **Campaign Registry** | `CC5TYZBWM56HPTVBNUQYEX6VQBHU7ZOQGR2I3B42ZIGECQ3PWN6I7WJ6` | Crear/listar campañas. |
+| 4 | **Campaign Vault** | `CBX5Z2U67JYBI6OGGYMARJ5IT6TZS3TELIKGS2FJTODS4KSCC767HXWR` | Custodia, depósitos, evidencia, liberaciones, refunds. |
+| 5 | **Donation Router** | `CCK57ZWLKAUEC6DJ2GV3WHMJMO3ERN4H7K44TS36AMJ2N3S7VOREGR67` | Punto de entrada único para donaciones. Aplica el fee. |
 
 **Red**: `Test SDF Network ; September 2015`
 **RPC URL**: `https://soroban-testnet.stellar.org`
@@ -517,9 +517,9 @@ Llamar después de crear la cuenta. En Mainnet, reemplazar por un on-ramp (VANK,
 
 ```bash
 # Read-only (funciona con CLI)
-stellar contract invoke --id CC3B4UP4AXCW4IMJCDXIT3Y7CFW7QFTCJXPSHYNKLQEDFHZA76EFEWGS --network testnet -- get_fee_bps
-stellar contract invoke --id CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK --network testnet -- get_authorized_router
-stellar contract invoke --id CBELZBFWB34SBDC6BUXD5MFG7KQBVC4L6K6HE7QJBPL72L3OTR4RO5XK --network testnet -- get_admin
+stellar contract invoke --id CCK57ZWLKAUEC6DJ2GV3WHMJMO3ERN4H7K44TS36AMJ2N3S7VOREGR67 --network testnet -- get_fee_bps
+stellar contract invoke --id CBX5Z2U67JYBI6OGGYMARJ5IT6TZS3TELIKGS2FJTODS4KSCC767HXWR --network testnet -- get_authorized_router
+stellar contract invoke --id CBX5Z2U67JYBI6OGGYMARJ5IT6TZS3TELIKGS2FJTODS4KSCC767HXWR --network testnet -- get_admin
 ```
 
 **Write operations**: usar el SDK desde Node.js o el frontend. El CLI no puede firmar por smart accounts (ver `known-limitations.md` → **E1** y `contracts/scripts/bootstrap.mjs` como referencia).
