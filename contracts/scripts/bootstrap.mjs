@@ -8,14 +8,24 @@
  *   bun run bootstrap --skip-router            # deploy only
  *   bun run bootstrap --fund                   # fund deployer via Friendbot first
  *   bun run bootstrap --extend-ttl             # after success, run ./scripts/extend-ttl.sh
+ *   bun run bootstrap --from-release v0.2.1    # download wasm from GitHub release, then deploy
+ *   bun run bootstrap --from-release v0.2.1 --repo bitajon/bitajon-stellar
+ *
+ * Why --from-release:
+ *   Stellar Expert verifies a contract by matching its on-chain wasm hash against
+ *   the wasm hash published in a GitHub release. If you deploy with a local build,
+ *   the hash may differ from the CI build (different Rust/CLI versions) and the
+ *   contract shows "Source code: Unavailable". Using --from-release downloads the
+ *   CI-built wasm and deploys that, guaranteeing a hash match.
  */
 
-import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import {
   Address,
@@ -77,6 +87,8 @@ function parseArgs(argv) {
     skipDeploy: false,
     fund: false,
     extendTtl: false,
+    fromRelease: null,
+    repo: null,
   };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -86,6 +98,8 @@ function parseArgs(argv) {
       case '--skip-deploy': flags.skipDeploy = true; break;
       case '--fund': flags.fund = true; break;
       case '--extend-ttl': flags.extendTtl = true; break;
+      case '--from-release': flags.fromRelease = argv[++i]; break;
+      case '--repo': flags.repo = argv[++i]; break;
       default: log.err(`Unknown argument: ${argv[i]}`); process.exit(1);
     }
   }
@@ -129,6 +143,97 @@ async function fundWithFriendbot(publicKey) {
   } catch (e) {
     log.warn(`Friendbot request failed: ${e.message}. Continuing anyway.`);
   }
+}
+
+/**
+ * Downloads all .wasm assets from the GitHub releases whose tag starts with
+ * `${refTag}-`, maps each asset name to its crate name, verifies the SHA-256
+ * hash, and copies the wasm to WASM_DIR so `deployContract` finds it.
+ *
+ * Returns the list of downloaded entries: { asset, crate, hash, path }.
+ */
+async function downloadWasmFromReleases(refTag, repoOverride) {
+  // Detect the GitHub repo from the origin remote.
+  let repo = repoOverride;
+  if (!repo) {
+    try {
+      const remoteUrl = execSync('git remote get-url origin', {
+        cwd: REPO_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+      const match = remoteUrl.match(/[:/]([^/:]+)\/([^/.]+?)(?:\.git)?$/);
+      if (!match) throw new Error(`Cannot parse repo from remote URL: ${remoteUrl}`);
+      repo = `${match[1]}/${match[2]}`;
+    } catch (e) {
+      throw new Error(`Cannot detect GitHub repo. Pass --repo owner/repo. Error: ${e.message}`);
+    }
+  }
+
+  log.info(`Fetching releases from GitHub: ${repo}`);
+  const res = await fetch(`https://api.github.com/repos/${repo}/releases`, {
+    headers: { 'Accept': 'application/vnd.github+json' },
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub API returned HTTP ${res.status} for ${repo}/releases`);
+  }
+  const releases = await res.json();
+
+  const prefix = `${refTag}-`;
+  const matching = releases.filter((r) => r.tag_name.startsWith(prefix));
+  if (matching.length === 0) {
+    throw new Error(
+      `No releases found with prefix "${prefix}" in ${repo}. ` +
+      `Make sure tag ${refTag} was pushed and the release workflows finished.`,
+    );
+  }
+
+  log.ok(`Found ${matching.length} release(s) with prefix "${prefix}":`);
+  for (const r of matching) log.info(`    - ${r.tag_name}`);
+
+  const tmpDir = join(REPO_ROOT, 'contracts', 'target', 'release-wasm');
+  mkdirSync(tmpDir, { recursive: true });
+  mkdirSync(WASM_DIR, { recursive: true });
+
+  const downloaded = [];
+
+  for (const release of matching) {
+    const wasmAssets = (release.assets || []).filter((a) => a.name.endsWith('.wasm'));
+    if (wasmAssets.length === 0) {
+      log.warn(`No .wasm asset in release ${release.tag_name}`);
+      continue;
+    }
+
+    for (const asset of wasmAssets) {
+      const tmpPath = join(tmpDir, asset.name);
+      log.info(`Downloading ${asset.name}...`);
+
+      const buf = await (await fetch(asset.browser_download_url)).arrayBuffer();
+      const bytes = Buffer.from(buf);
+      writeFileSync(tmpPath, bytes);
+
+      const sha256 = createHash('sha256').update(bytes).digest('hex');
+      log.ok(`  Downloaded (sha256: ${sha256.substring(0, 16)}…)`);
+
+      // Map asset name to crate name. Examples:
+      //   "nonprofit-registry_v0.2.0.wasm" → "nonprofit_registry"
+      //   "campaign-vault_v0.2.0.wasm"     → "campaign_vault"
+      // The version is always after the first underscore, so split('_')[0]
+      // reliably yields the package name with dashes.
+      const baseName = asset.name.replace(/\.wasm$/, '');
+      const crateName = baseName.split('_')[0].replace(/-/g, '_');
+      const destPath = join(WASM_DIR, `${crateName}.wasm`);
+
+      copyFileSync(tmpPath, destPath);
+      log.ok(`  → ${destPath}`);
+
+      downloaded.push({ asset: asset.name, crate: crateName, hash: sha256, path: destPath });
+    }
+  }
+
+  if (downloaded.length === 0) {
+    throw new Error(`No wasm files were downloaded from releases with prefix "${prefix}".`);
+  }
+
+  return downloaded;
 }
 
 async function deployContract(server, kp, wasmName, ctorArgs) {
@@ -395,9 +500,23 @@ async function main() {
   log.info(`Pubkey:     ${Buffer.from(deployerPk).toString('hex')}`);
   log.info(`Fee:        ${flags.feeBps} bps`);
   if (flags.skipDeploy) log.info('Mode:       SKIP-DEPLOY (reuse IDs from .env.testnet)');
+  if (flags.fromRelease) log.info(`Wasm source: GitHub release "${flags.fromRelease}"`);
+
+  // Validate flag combinations early.
+  if (flags.fromRelease && flags.skipDeploy) {
+    throw new Error('--from-release cannot be combined with --skip-deploy (no deploy will happen)');
+  }
 
   if (flags.fund) {
     await fundWithFriendbot(deployerPub);
+  }
+
+  // If --from-release is set, download the CI-built wasm BEFORE deploying.
+  if (flags.fromRelease) {
+    log.section('0/5 — Downloading wasm from GitHub release');
+    const downloaded = await downloadWasmFromReleases(flags.fromRelease, flags.repo);
+    log.ok(`${downloaded.length} wasm file(s) ready in ${WASM_DIR}`);
+    console.log();
   }
 
   const server = new rpc.Server(RPC_URL);
@@ -431,7 +550,10 @@ async function main() {
     log.info(`DR_ID=${drId}`);
     log.info(`  ↳ ${link(explorerUrl(drId))}`);
   } else {
-    deployMode = 'freshly deployed';
+    deployMode = flags.fromRelease
+      ? `freshly deployed from release ${flags.fromRelease}`
+      : 'freshly deployed';
+
     log.section('1/5 — governance-account');
     governanceId = await deployContract(server, kp, 'governance_account', [
       xdr.ScVal.scvVec([xdr.ScVal.scvBytes(deployerPk)]),
