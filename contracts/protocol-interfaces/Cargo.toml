@@ -1,5 +1,5 @@
 [package]
-name = "thriving-interfaces"
+name = "protocol-interfaces"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 soroban-sdk.workspace = true
-thriving-types.workspace = true
+protocol-types.workspace = true
 
 [lib]
 crate-type = ["lib"]

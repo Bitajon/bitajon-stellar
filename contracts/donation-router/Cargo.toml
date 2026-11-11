@@ -10,8 +10,8 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 soroban-sdk.workspace = true
-thriving-types.workspace = true
-thriving-interfaces.workspace = true
+protocol-types.workspace = true
+protocol-interfaces.workspace = true
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

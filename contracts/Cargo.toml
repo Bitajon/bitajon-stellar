@@ -1,26 +1,27 @@
 [workspace]
 resolver = "2"
 members = [
-    "thriving-types",
-    "thriving-interfaces",
+    "protocol-types",
+    "protocol-interfaces",
     "nonprofit-registry",
     "campaign-registry",
     "campaign-vault",
     "donation-router",
+    "governance-account",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-authors = ["ThrivingHub"]
+authors = ["Bitajón"]
 license = "MIT"
 
 [workspace.dependencies]
 #https://github.com/stellar/rs-soroban-sdk
 #https://crates.io/crates/soroban-sdk
 soroban-sdk = "29.0.1"
-thriving-types = { path = "thriving-types" }
-thriving-interfaces = { path = "thriving-interfaces" }
+protocol-types = { path = "protocol-types" }
+protocol-interfaces = { path = "protocol-interfaces" }
 
 [profile.release]
 opt-level = "z"
