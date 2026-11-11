@@ -62,7 +62,10 @@ export function useFiatValue() {
   );
 }
 
-/** Monto en XLM con su equivalente aproximado en COP o USD debajo. */
+/**
+ * Monto con el valor en COP/USD grande y el XLM pequeño debajo.
+ * Mientras no hay precio (o si falla), se muestra el XLM como valor principal.
+ */
 export function Money({
   units,
   decimals = 2,
@@ -73,24 +76,32 @@ export function Money({
   units: bigint;
   decimals?: number;
   className?: string;
+  /** Clase de la línea pequeña (el XLM). */
   fiatClassName?: string;
   inline?: boolean;
 }) {
   const toFiat = useFiatValue();
   const fiat = toFiat(units);
+  const xlm = formatToken(units, decimals);
   if (inline)
     return (
       <span className={className}>
-        {formatToken(units, decimals)}
-        {fiat && <span className="font-normal text-slate-500"> (≈ {fiat})</span>}
+        {fiat ?? xlm}
+        {fiat && <span className="font-normal text-slate-500"> ({xlm})</span>}
       </span>
     );
   return (
     <span className={className}>
-      {formatToken(units, decimals)}
-      {fiat && <span className={fiatClassName}>≈ {fiat}</span>}
+      {fiat ?? xlm}
+      {fiat && <span className={fiatClassName}>{xlm}</span>}
     </span>
   );
+}
+
+/** Texto plano: "$ 1.246.193 COP" o, sin precio, "2.570 XLM". */
+export function useMoneyText() {
+  const toFiat = useFiatValue();
+  return useCallback((units: bigint, decimals = 2) => toFiat(units) ?? formatToken(units, decimals), [toFiat]);
 }
 
 /** Selector COP / USD para el encabezado. */

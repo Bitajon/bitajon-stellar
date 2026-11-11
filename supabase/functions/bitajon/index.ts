@@ -539,7 +539,11 @@ async function handle(body: any) {
       await requireOwner(signer, registry, campaignId);
       const gallery = Array.isArray(body.gallery) ? body.gallery.slice(0, 12) : [];
       const cover = body.cover_path ?? null;
-      assertPaths(cover ? [cover, ...gallery] : gallery, `${registry}/${campaignId}/`);
+      // Se aceptan rutas nuevas de esta campaña o las que ya estaban guardadas (p. ej. fotos
+      // copiadas desde otro despliegue de prueba).
+      const { data: current } = await db.from("bitajon_campaign_meta").select("cover_path, gallery").eq("registry", registry).eq("campaign_id", campaignId).maybeSingle();
+      const kept = new Set<string>([current?.cover_path, ...((current?.gallery as string[]) ?? [])].filter(Boolean) as string[]);
+      assertPaths((cover ? [cover, ...gallery] : gallery).filter((p: unknown) => !kept.has(String(p))), `${registry}/${campaignId}/`);
       const { error } = await db
         .from("bitajon_campaign_meta")
         .upsert({ registry, campaign_id: campaignId, cover_path: cover, gallery, updated_at: new Date().toISOString() });

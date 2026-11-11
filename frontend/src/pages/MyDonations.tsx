@@ -73,7 +73,7 @@ function Inner() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label={tr("Donado", "Donated")} value={formatToken(total)} sub={toFiat(total)} />
+        <Stat label={tr("Donado", "Donated")} value={toFiat(total) ?? formatToken(total)} sub={toFiat(total) ? formatToken(total) : null} />
         <Stat label={tr("Donaciones", "Donations")} value={String(mine.length)} />
         <Stat label={tr("Campañas apoyadas", "Campaigns supported")} value={String(supported)} />
       </div>
@@ -169,7 +169,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
     <div className="card p-5">
       <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</p>
       <p className="mt-1 font-display text-2xl font-semibold text-brand-900">{value}</p>
-      {sub && <p className="text-xs text-slate-500">≈ {sub}</p>}
+      {sub && <p className="text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }

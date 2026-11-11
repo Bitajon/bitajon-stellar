@@ -125,7 +125,7 @@ export function ConnectButton({ full = false }: { full?: boolean }) {
               <span className="font-mono text-xs break-all text-brand-900">{shortAddress(address, 8)}</span>
               <CopyButton value={address} />
             </div>
-            {fiat && <p className="mt-1 text-xs text-slate-500">≈ {fiat}</p>}
+            {fiat && <p className="mt-1 text-sm font-semibold text-brand-900">{fiat}</p>}
           </div>
           {IS_TESTNET && (
             <button type="button" onClick={fund} disabled={funding} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-leaf-50 disabled:opacity-60">

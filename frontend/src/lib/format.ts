@@ -65,8 +65,8 @@ export function daysLeft(unixSeconds: bigint | number): number {
 }
 
 export function timeLeftLabel(unixSeconds: bigint | number): string {
+  if (Number(unixSeconds) * 1000 <= Date.now()) return tr("Cerrada", "Closed");
   const d = daysLeft(unixSeconds);
-  if (d < 0) return tr("Cerrada", "Closed");
   if (d === 0) return tr("Cierra hoy", "Closes today");
   if (d === 1) return tr("Queda 1 día", "1 day left");
   return tr(`Quedan ${d} días`, `${d} days left`);

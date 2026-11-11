@@ -53,7 +53,7 @@ export function Home() {
             </div>
             <dl className="mt-10 grid max-w-md grid-cols-3 gap-4">
               <Stat label={tr("Campañas", "Campaigns")} value={campaigns.isLoading ? "…" : String(list.length)} />
-              <Stat label={tr("Recaudado", "Raised")} value={campaigns.isLoading ? "…" : formatToken(totalRaised, 0)} sub={campaigns.isLoading ? undefined : (toFiat(totalRaised) ?? undefined)} />
+              <Stat label={tr("Recaudado", "Raised")} value={campaigns.isLoading ? "…" : (toFiat(totalRaised) ?? formatToken(totalRaised, 0))} sub={campaigns.isLoading || !toFiat(totalRaised) ? undefined : formatToken(totalRaised, 0)} />
               <Stat label={tr("Completadas", "Completed")} value={campaigns.isLoading ? "…" : String(completed)} />
             </dl>
           </div>
@@ -70,7 +70,7 @@ export function Home() {
               </div>
               <div className="mt-3 flex justify-between text-sm">
                 <span className="font-bold text-brand-900">{hero ? <Money units={raised(hero)} inline /> : tr("Recaudado", "Raised")}</span>
-                <span className="text-slate-500">{hero ? `${tr("de", "of")} ${formatToken(hero.campaign.target_amount)}` : tr("Meta", "Goal")}</span>
+                <span className="text-slate-500">{hero ? `${tr("de", "of")} ${toFiat(hero.campaign.target_amount) ?? formatToken(hero.campaign.target_amount)}` : tr("Meta", "Goal")}</span>
               </div>
               <ul className="mt-6 space-y-3 text-sm">
                 <Check text={tr("Fondos en custodia on-chain", "Funds held in custody on-chain")} />
@@ -183,7 +183,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
     <div>
       <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</dt>
       <dd className="mt-1 font-display text-2xl font-semibold text-brand-900">{value}</dd>
-      {sub && <dd className="text-xs text-slate-500">≈ {sub}</dd>}
+      {sub && <dd className="text-xs text-slate-500">{sub}</dd>}
     </div>
   );
 }

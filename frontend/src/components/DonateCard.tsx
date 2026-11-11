@@ -99,7 +99,7 @@ export function DonateCard({ view }: { view: CampaignView }) {
           <span className="absolute top-1/2 right-4 -translate-y-1/2 text-sm font-semibold text-slate-400">{TOKEN_SYMBOL}</span>
         </div>
       </label>
-      {fiatOfInput && <p className="mt-1.5 text-sm font-medium text-slate-600">≈ {fiatOfInput}</p>}
+      {fiatOfInput && <p className="mt-1.5 text-base font-semibold text-brand-900">{tr("Equivale a", "Equals")} {fiatOfInput}</p>}
       {price.data && (
         <details className="mt-2 text-xs text-slate-500">
           <summary className="cursor-pointer font-semibold text-brand-700">{tr(`Calcular desde ${fiat}`, `Calculate from ${fiat}`)}</summary>

@@ -2,8 +2,8 @@ import { CalendarClock, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCampaignMetaMap, useNonprofitMeta, useProfile } from "../hooks/queries";
 import { BUCKETS, publicUrl } from "../lib/offchain";
-import { Money } from "../lib/currency";
-import { formatToken, percent, timeLeftLabel } from "../lib/format";
+import { Money, useMoneyText } from "../lib/currency";
+import { percent, timeLeftLabel } from "../lib/format";
 import { tr } from "../lib/i18n";
 import { milestoneOf, raised, stageOf } from "../lib/status";
 import type { CampaignView } from "../lib/stellar";
@@ -16,6 +16,7 @@ export function CampaignCard({ view }: { view: CampaignView }) {
   const got = raised(view);
   const pct = percent(got, campaign.target_amount);
   const profile = useProfile(campaign.nonprofit);
+  const money = useMoneyText();
   const nonprofitMeta = useNonprofitMeta(campaign.nonprofit);
   const metaMap = useCampaignMetaMap();
   const cover = publicUrl(BUCKETS.media, metaMap.data?.get(view.id.toString())?.cover_path);
@@ -41,7 +42,7 @@ export function CampaignCard({ view }: { view: CampaignView }) {
           <div>
             <Money units={got} className="text-base font-bold text-brand-900" fiatClassName="block text-[0.7rem] font-medium text-slate-500" />
             <p className="text-xs text-slate-500">
-              {tr("de", "of")} {formatToken(campaign.target_amount)}
+              {tr("de", "of")} {money(campaign.target_amount)}
             </p>
           </div>
           <p className="text-sm font-bold text-leaf-700">{Math.floor(pct)}%</p>
