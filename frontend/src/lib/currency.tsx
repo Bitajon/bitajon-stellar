@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Coins } from "lucide-react";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { formatFiat, formatToken, unitsToNumber, type Fiat } from "./format";
 import { getLang, tr } from "./i18n";
@@ -86,14 +87,14 @@ export function Money({
   if (inline)
     return (
       <span className={className}>
-        {fiat ?? xlm}
-        {fiat && <span className="font-normal text-slate-500"> ({xlm})</span>}
+        <span className="whitespace-nowrap">{fiat ?? xlm}</span>
+        {fiat && <span className="font-normal whitespace-nowrap text-slate-500"> ({xlm})</span>}
       </span>
     );
   return (
     <span className={className}>
-      {fiat ?? xlm}
-      {fiat && <span className={fiatClassName}>{xlm}</span>}
+      <span className="whitespace-nowrap">{fiat ?? xlm}</span>
+      {fiat && <span className={`${fiatClassName} whitespace-nowrap`}>{xlm}</span>}
     </span>
   );
 }
@@ -115,7 +116,9 @@ export function FiatToggle({ className = "" }: { className?: string }) {
       )
     : tr("Precio del XLM no disponible", "XLM price unavailable");
   return (
-    <div className={`inline-flex rounded-full bg-slate-100 p-0.5 text-xs font-semibold ${className}`} role="group" aria-label={tr("Moneda de referencia", "Reference currency")} title={title}>
+    <div className={`inline-flex items-center gap-1 rounded-full bg-slate-100 p-0.5 pl-2.5 text-xs font-semibold ${className}`} role="group" aria-label={tr("Moneda de referencia", "Reference currency")} title={title}>
+      <Coins className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+      <span className="mr-0.5 text-slate-500">{tr("Moneda", "Currency")}</span>
       {(["COP", "USD"] as Fiat[]).map((f) => (
         <button
           key={f}

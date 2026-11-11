@@ -1,4 +1,4 @@
-import { AlertTriangle, Menu, X } from "lucide-react";
+import { AlertTriangle, Languages, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { CONTRACT_LABELS, CONTRACTS, IS_TESTNET } from "../config";
@@ -20,7 +20,9 @@ const nav = () => [
 export function LangToggle({ className = "" }: { className?: string }) {
   const { lang, setLang } = useLang();
   return (
-    <div className={`inline-flex rounded-full bg-slate-100 p-0.5 text-xs font-semibold ${className}`} role="group" aria-label={tr("Idioma", "Language")}>
+    <div className={`inline-flex items-center gap-1 rounded-full bg-slate-100 p-0.5 pl-2.5 text-xs font-semibold ${className}`} role="group" aria-label={tr("Idioma", "Language")}>
+      <Languages className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+      <span className="mr-0.5 text-slate-500">{tr("Idioma", "Language")}</span>
       {(["es", "en"] as const).map((l) => (
         <button
           key={l}
@@ -37,7 +39,7 @@ export function LangToggle({ className = "" }: { className?: string }) {
 }
 
 function navClass({ isActive }: { isActive: boolean }) {
-  return `rounded-full px-3.5 py-2 text-sm font-semibold transition ${
+  return `whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold transition ${
     isActive ? "bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50 hover:text-brand-800"
   }`;
 }
@@ -70,6 +72,14 @@ export function Layout() {
         </div>
       )}
 
+      {/* Preferencias: idioma y moneda en que se muestran los montos */}
+      <div className="border-b border-slate-200/70 bg-white">
+        <div className="container-page flex flex-wrap items-center justify-end gap-2 py-1.5">
+          <LangToggle />
+          <FiatToggle />
+        </div>
+      </div>
+
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
         <div className="container-page flex h-16 items-center justify-between gap-4">
           <Logo />
@@ -80,9 +90,7 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
-          <div className="hidden items-center gap-2 xl:flex">
-            <LangToggle />
-            <FiatToggle />
+          <div className="hidden xl:block">
             <ConnectButton />
           </div>
           <button type="button" className="btn-ghost !p-2 xl:hidden" onClick={() => setOpen((o) => !o)} aria-label={open ? tr("Cerrar menú", "Close menu") : tr("Abrir menú", "Open menu")} aria-expanded={open}>
@@ -97,10 +105,6 @@ export function Layout() {
                   {i.label}
                 </NavLink>
               ))}
-              <div className="mt-2 flex items-center gap-2 px-1">
-                <LangToggle />
-                <FiatToggle />
-              </div>
               <div className="mt-2">
                 <ConnectButton full />
               </div>

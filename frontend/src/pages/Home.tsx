@@ -51,7 +51,7 @@ export function Home() {
                 <Building2 className="h-4 w-4" /> {tr("Soy una fundación", "I'm a nonprofit")}
               </Link>
             </div>
-            <dl className="mt-10 grid max-w-md grid-cols-3 gap-4">
+            <dl className="mt-10 grid max-w-xl grid-cols-2 gap-4 sm:grid-cols-[auto_auto_auto] sm:justify-start sm:gap-x-8">
               <Stat label={tr("Campañas", "Campaigns")} value={campaigns.isLoading ? "…" : String(list.length)} />
               <Stat label={tr("Recaudado", "Raised")} value={campaigns.isLoading ? "…" : (toFiat(totalRaised) ?? formatToken(totalRaised, 0))} sub={campaigns.isLoading || !toFiat(totalRaised) ? undefined : formatToken(totalRaised, 0)} />
               <Stat label={tr("Completadas", "Completed")} value={campaigns.isLoading ? "…" : String(completed)} />
@@ -182,7 +182,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   return (
     <div>
       <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</dt>
-      <dd className="mt-1 font-display text-2xl font-semibold text-brand-900">{value}</dd>
+      <dd className="mt-1 font-display text-xl font-semibold whitespace-nowrap text-brand-900 sm:text-2xl">{value}</dd>
       {sub && <dd className="text-xs text-slate-500">{sub}</dd>}
     </div>
   );

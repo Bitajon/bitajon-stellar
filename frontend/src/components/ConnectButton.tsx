@@ -51,7 +51,7 @@ export function ConnectButton({ full = false }: { full?: boolean }) {
 
   if (installed === false && !address) {
     return (
-      <a href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer" className={`btn-outline ${full ? "w-full" : ""}`}>
+      <a href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer" className={`btn-outline whitespace-nowrap ${full ? "w-full" : ""}`}>
         <Wallet className="h-4 w-4" /> {tr("Instalar Varial", "Install Varial")}
       </a>
     );
@@ -61,7 +61,7 @@ export function ConnectButton({ full = false }: { full?: boolean }) {
     return (
       <button
         type="button"
-        className={`btn-navy ${full ? "w-full" : ""}`}
+        className={`btn-navy whitespace-nowrap ${full ? "w-full" : ""}`}
         disabled={connecting}
         onClick={async () => {
           try {
