@@ -217,7 +217,14 @@ export function CampaignDetail() {
             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
               <Mini label={tr("Avance", "Progress")} value={`${Math.floor(pct)}%`} />
               <Mini label={tr("Donantes", "Donors")} value={events.isLoading ? "…" : String(donors)} icon={<Users className="h-3.5 w-3.5" />} />
-              <Mini label={tr("Tiempo", "Time")} value={timeLeftLabel(campaign.deadline).replace("Quedan ", "").replace("Queda ", "").replace(" left", "")} />
+                          <Mini
+              label={tr("Tiempo", "Time")}
+              value={
+                stage === "completed" || stage === "funded" || stage === "review" || stage === "cancelled" || stage === "paused"
+                  ? "—"
+                  : timeLeftLabel(campaign.deadline).replace("Quedan ", "").replace("Queda ", "").replace(" left", "")
+              }
+            />
             </div>
           </div>
           <div className="mt-4">

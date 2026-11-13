@@ -20,6 +20,12 @@ export function CampaignCard({ view }: { view: CampaignView }) {
   const nonprofitMeta = useNonprofitMeta(campaign.nonprofit);
   const metaMap = useCampaignMetaMap();
   const cover = publicUrl(BUCKETS.media, metaMap.data?.get(view.id.toString())?.cover_path);
+  const timeLabel =
+    stage === "completed" ? tr("Completada", "Completed")
+    : stage === "funded" || stage === "review" ? tr("Meta alcanzada", "Goal reached")
+    : stage === "cancelled" ? tr("Cancelada", "Cancelled")
+    : stage === "paused" ? tr("Pausada", "Paused")
+    : timeLeftLabel(campaign.deadline);
 
   return (
     <Link
@@ -51,8 +57,8 @@ export function CampaignCard({ view }: { view: CampaignView }) {
           <span className="inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" /> {campaign.location || "Colombia"}
           </span>
-          <span className="inline-flex items-center gap-1">
-            <CalendarClock className="h-3.5 w-3.5" /> {timeLeftLabel(campaign.deadline)}
+           <span className="inline-flex items-center gap-1">
+            <CalendarClock className="h-3.5 w-3.5" /> {timeLabel}
           </span>
         </div>
       </div>

@@ -59,15 +59,16 @@ No hace falta un `.env`: por defecto usa los contratos desplegados (README del m
 
 ## Decisiones y límites (para el pitch y la demo)
 
-- **Wallet:** Freighter. Las Passkeys de la guía quedan como siguiente paso.
+- **Wallet:** Varial (antes Freighter) y correo (Blux). Las Passkeys de la guía quedan como siguiente paso.
 - **Token:** XLM nativo de testnet (su contrato SAC `CDLZFC3S…CYSC`). Se cambia con `VITE_TOKEN_ADDRESS`.
-- **Evidencia y RUT:** el navegador calcula el SHA-256 del archivo y solo esa huella va a la red; el archivo no se sube a ningún servidor. En el detalle de la campaña cualquiera puede comprobar un archivo contra la huella publicada.
+- **Evidencia y RUT:** el navegador calcula el SHA-256 del archivo y solo esa huella va a la red. Los archivos de evidencia se publican en Supabase (públicos) y el RUT va a un bucket privado que solo ven los admins. En el detalle de la campaña cualquiera puede comprobar un archivo contra la huella publicada.
 - **Datos públicos:** razón social, NIT y correo de la fundación quedan públicos en la red.
 - **Listado de campañas:** los contratos no tienen una función para listar, así que se consultan los IDs desde 1 hasta el primero que no existe.
 - **Historial (donaciones, registros):** sale de los eventos del RPC, que en testnet guarda unos 7 días. El total recaudado siempre se lee del contrato.
-- **Admin:** solo la cuenta `VITE_ADMIN_ADDRESS` (la `deployer`) ve el panel. Para la demo hay que importarla en Freighter o que Andrés firme esas acciones.
+- **Admin:** las wallets de la tabla `bitajon_admins` (Supabase) ven el panel; las acciones las firma la cuenta del equipo por el `governance-account`.
 - **Límite L1 de los contratos:** si una campaña se cancela, la bóveda sigue aceptando depósitos; el frontend bloquea la donación revisando el estado de la campaña.
 - **Monto máximo:** la bóveda rechaza depósitos que pasen la meta, así que el formulario limita la donación a lo que falta.
+
 
 ## Bindings
 
