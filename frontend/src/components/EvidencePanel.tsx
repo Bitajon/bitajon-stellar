@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tr } from "../lib/i18n";
 import { FileText, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEvidenceRecords } from "../hooks/queries";
 import { toHex } from "../lib/hash";
@@ -52,18 +53,26 @@ function PublishedEvidence({ record, onChain }: { record: EvidenceRecord; onChai
         <div>
           <p className="font-semibold">
             {check.isLoading
-              ? "Verificando la evidencia contra la red…"
+              ? tr("Verificando la evidencia contra la red…", "Verifying the evidence against the network…")
               : check.data?.allOk
-                ? `Evidencia verificada: ${record.manifest.files.length} archivo${record.manifest.files.length === 1 ? "" : "s"} coinciden con la huella registrada en Stellar.`
-                : "Algún archivo no coincide con la huella registrada en Stellar."}
+                ? tr(
+                    `Evidencia verificada: ${record.manifest.files.length} archivo${record.manifest.files.length === 1 ? "" : "s"} coinciden con la huella registrada en Stellar.`,
+                    `Evidence verified: ${record.manifest.files.length} file${record.manifest.files.length === 1 ? "" : "s"} match the fingerprint registered on Stellar.`,
+                  )
+                : tr("Algún archivo no coincide con la huella registrada en Stellar.", "Some file does not match the fingerprint registered on Stellar.")}
           </p>
-          <p className="mt-0.5 text-xs opacity-80">La verificación la hace tu navegador: calcula la huella SHA-256 de cada archivo y la compara con la que quedó en el contrato.</p>
+          <p className="mt-0.5 text-xs opacity-80">
+            {tr(
+              "La verificación la hace tu navegador: calcula la huella SHA-256 de cada archivo y la compara con la que quedó en el contrato.",
+              "Your browser does the check: it computes each file's SHA-256 fingerprint and compares it with the one stored in the contract.",
+            )}
+          </p>
         </div>
       </div>
 
       {record.manifest.note && <p className="text-sm leading-relaxed whitespace-pre-line text-slate-700">{record.manifest.note}</p>}
 
-      {images.length > 0 && <Gallery urls={images.map((f) => publicUrl(BUCKETS.evidence, f.path)!)} title="Evidencia" />}
+      {images.length > 0 && <Gallery urls={images.map((f) => publicUrl(BUCKETS.evidence, f.path)!)} title={tr("Evidencia", "Evidence")} />}
 
       {docs.length > 0 && (
         <ul className="space-y-2">
@@ -87,8 +96,8 @@ function PublishedEvidence({ record, onChain }: { record: EvidenceRecord; onChai
       )}
 
       <details className="text-xs text-slate-500">
-        <summary className="cursor-pointer font-semibold text-brand-700">Detalle técnico</summary>
-        <p className="mt-2">Huella registrada on-chain (manifiesto):</p>
+        <summary className="cursor-pointer font-semibold text-brand-700">{tr("Detalle técnico", "Technical details")}</summary>
+        <p className="mt-2">{tr("Huella registrada on-chain (manifiesto):", "Fingerprint registered on-chain (manifest):")}</p>
         <code className="block break-all text-brand-900">{onChain}</code>
         <ul className="mt-2 space-y-1">
           {record.manifest.files.map((f) => (

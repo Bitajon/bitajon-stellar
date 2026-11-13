@@ -1,11 +1,12 @@
 import { AtSign, BadgeCheck, Building2, Globe, MessageCircle } from "lucide-react";
+import { tr } from "../lib/i18n";
 import type { ReactNode } from "react";
 import { useNonprofitMeta, useProfile } from "../hooks/queries";
 import { shortAddress } from "../lib/format";
 import { BUCKETS, publicUrl, type Socials } from "../lib/offchain";
 
 const SOCIALS: { key: keyof Socials; label: string; icon: ReactNode; placeholder: string }[] = [
-  { key: "website", label: "Sitio web", icon: <Globe className="h-4 w-4" />, placeholder: "https://mifundacion.org" },
+  { key: "website", label: "Web", icon: <Globe className="h-4 w-4" />, placeholder: "https://mifundacion.org" },
   { key: "instagram", label: "Instagram", icon: <AtSign className="h-4 w-4" />, placeholder: "@mifundacion" },
   { key: "facebook", label: "Facebook", icon: <AtSign className="h-4 w-4" />, placeholder: "facebook.com/mifundacion" },
   { key: "tiktok", label: "TikTok", icon: <AtSign className="h-4 w-4" />, placeholder: "@mifundacion" },
@@ -78,7 +79,7 @@ export function SocialFields({ value, onChange }: { value: Socials; onChange: (v
 export function NonprofitLogo({ path, name, size = "h-14 w-14" }: { path?: string | null; name: string; size?: string }) {
   const url = publicUrl(BUCKETS.media, path);
   return url ? (
-    <img src={url} alt={`Logo de ${name}`} className={`${size} shrink-0 rounded-2xl bg-white object-contain ring-1 ring-slate-200`} />
+    <img src={url} alt={`${tr("Logo de", "Logo of")} ${name}`} className={`${size} shrink-0 rounded-2xl bg-white object-contain ring-1 ring-slate-200`} />
   ) : (
     <span className={`${size} grid shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-50 to-leaf-50 text-brand-700 ring-1 ring-brand-100`}>
       <Building2 className="h-6 w-6" />
@@ -94,12 +95,12 @@ export function NonprofitCard({ address }: { address: string }) {
   const approved = profile.data?.status.tag === "Approved";
   return (
     <section className="card p-6">
-      <p className="eyebrow">Quién organiza</p>
+      <p className="eyebrow">{tr("Quién organiza", "Organized by")}</p>
       <div className="mt-3 flex items-start gap-4">
         <NonprofitLogo path={meta.data?.logo_path} name={name} />
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-lg font-semibold text-brand-900">
-            {name} {approved && <BadgeCheck className="h-5 w-5 shrink-0 text-leaf-600" aria-label="Fundación verificada" />}
+            {name} {approved && <BadgeCheck className="h-5 w-5 shrink-0 text-leaf-600" aria-label={tr("Fundación verificada", "Verified nonprofit")} />}
           </p>
           {profile.data && <p className="text-xs text-slate-500">NIT {profile.data.tax_id}</p>}
         </div>

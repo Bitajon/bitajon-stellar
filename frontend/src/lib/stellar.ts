@@ -1,6 +1,6 @@
 import type { AssembledTransaction, SignTransaction } from "@stellar/stellar-sdk/contract";
 import { Buffer } from "buffer";
-import { CONTRACTS, MILESTONE_PERCENTAGE, NETWORK_PASSPHRASE, RPC_URL, TOKEN_ADDRESS } from "../config";
+import { CONTRACTS, NETWORK_PASSPHRASE, RPC_URL, TOKEN_ADDRESS } from "../config";
 import { Client as CampaignClient, type Campaign } from "../contracts/campaign-registry";
 import { Client as VaultClient, type VaultState } from "../contracts/campaign-vault";
 import { Client as RouterClient, type QuoteResult } from "../contracts/donation-router";
@@ -59,7 +59,7 @@ export type TxResult<T> = { result: T; hash: string };
 
 async function send<T>(call: Promise<AssembledTransaction<T>>): Promise<TxResult<T>> {
   const tx = await call;
-  // Se valida antes de abrir Freighter, para no pedir una firma que el contrato va a rechazar.
+  // Se valida antes de abrir la wallet, para no pedir una firma que el contrato va a rechazar.
   throwIfSimulationFailed(tx);
   // force: algunas llamadas (p. ej. aprobar una fundación ya aprobada) no escriben nada,
   // pero igual queremos enviarlas y obtener el hash.
@@ -167,15 +167,16 @@ export function grossForNet(net: bigint, feeBps: number): bigint {
 }
 
 /* ------------------------------------------------------------------ */
-/* Escrituras (requieren firma en Freighter)                            */
+/* Escrituras (requieren firma de la wallet o de la cuenta de correo)                            */
 /* ------------------------------------------------------------------ */
 
 export type NewNonprofit = {
   legalName: string;
   taxId: string;
   rutHash: Buffer;
+  /** SHA-256 del correo en minúsculas: el correo real se guarda fuera de la cadena (Ley 1581). */
+  emailHash: Buffer;
   retentionCertificate: boolean;
-  email: string;
   dataConsent: boolean;
 };
 
@@ -184,21 +185,13 @@ export function registerNonprofit(signer: Signer, p: NewNonprofit) {
     legal_name: p.legalName,
     tax_id: p.taxId,
     rut_hash: p.rutHash,
+    email_hash: p.emailHash,
     retention_certificate: p.retentionCertificate,
-    email: p.email,
     data_consent: p.dataConsent,
     // El contrato fuerza Pending sin importar lo que se envíe.
     status: { tag: "Pending", values: undefined },
   };
   return send(makeClients(signer).nonprofits.register_nonprofit({ nonprofit: signer.address, profile }));
-}
-
-export function approveNonprofit(signer: Signer, nonprofit: string) {
-  return send(makeClients(signer).nonprofits.approve_nonprofit({ admin: signer.address, nonprofit }));
-}
-
-export function revokeNonprofit(signer: Signer, nonprofit: string) {
-  return send(makeClients(signer).nonprofits.revoke_nonprofit({ admin: signer.address, nonprofit }));
 }
 
 export type NewCampaign = {
@@ -207,6 +200,8 @@ export type NewCampaign = {
   location: string;
   targetAmount: bigint;
   deadline: bigint;
+  /** % que se libera al llegar a la meta (1 a 90). */
+  milestonePercentage: number;
 };
 
 export function createCampaign(signer: Signer, c: NewCampaign) {
@@ -219,13 +214,14 @@ export function createCampaign(signer: Signer, c: NewCampaign) {
       target_amount: c.targetAmount,
       token_address: TOKEN_ADDRESS,
       deadline: c.deadline,
-      milestone_percentage: MILESTONE_PERCENTAGE,
+      milestone_percentage: c.milestonePercentage,
     }),
   );
 }
 
-export function createVault(signer: Signer, campaignId: bigint) {
-  return send(makeClients(signer).vault.create_vault({ campaign_id: campaignId, nonprofit: signer.address }));
+/** `verifier`: cuenta que valida la evidencia y libera el resto (la cuenta del equipo de BITAJÓN). */
+export function createVault(signer: Signer, campaignId: bigint, verifier: string) {
+  return send(makeClients(signer).vault.create_vault({ campaign_id: campaignId, nonprofit: signer.address, verifier }));
 }
 
 export function cancelCampaign(signer: Signer, campaignId: bigint) {
@@ -247,6 +243,7 @@ export function submitEvidence(signer: Signer, campaignId: bigint, evidenceHash:
   );
 }
 
-export function releaseFinal(signer: Signer, campaignId: bigint) {
-  return send(makeClients(signer).vault.release_final({ campaign_id: campaignId, admin: signer.address }));
+/** Devuelve al donante su aporte neto si la campaña expiró sin llegar a la meta, se canceló o está pausada. */
+export function claimRefund(signer: Signer, campaignId: bigint) {
+  return send(makeClients(signer).vault.claim_refund({ campaign_id: campaignId, donor: signer.address }));
 }

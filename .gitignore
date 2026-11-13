@@ -123,3 +123,6 @@ $RECYCLE.BIN/
 tmp/
 temp/
 *.tmp
+
+# Vercel
+.vercel

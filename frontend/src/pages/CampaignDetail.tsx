@@ -13,8 +13,10 @@ import { AddressLink, EmptyState, ErrorBox, ProgressBar, Spinner, StageBadge, Tx
 import { CONTRACTS } from "../config";
 import { donationsFrom, milestonesFrom, useCampaign, useCampaignMetaMap, useEvents, useNonprofitMeta, useProfile } from "../hooks/queries";
 import { BUCKETS, publicUrl } from "../lib/offchain";
-import { formatDate, formatToken, percent, relativeTime, shortAddress, timeLeftLabel } from "../lib/format";
-import { STAGE_INFO, raised, stageOf } from "../lib/status";
+import { formatDate, percent, relativeTime, shortAddress, timeLeftLabel } from "../lib/format";
+import { Money } from "../lib/currency";
+import { tr } from "../lib/i18n";
+import { milestoneOf, raised, refundable, stageInfo, stageOf } from "../lib/status";
 import { useWallet } from "../lib/wallet";
 
 function parseId(raw: string | undefined): bigint | null {
@@ -49,6 +51,7 @@ export function CampaignDetail() {
 
   const { campaign, vault } = view;
   const stage = stageOf(view);
+  const m = milestoneOf(view);
   const got = raised(view);
   const pct = percent(got, campaign.target_amount);
   const donations = donationsFrom(events.data).filter((d) => d.campaignId === view.id);
@@ -64,7 +67,7 @@ export function CampaignDetail() {
     <div className="pb-10">
       <div className="container-page pt-6">
         <Link to="/campanas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-brand-800">
-          <ArrowLeft className="h-4 w-4" /> Todas las campañas
+          <ArrowLeft className="h-4 w-4" /> {tr("Todas las campañas", "All campaigns")}
         </Link>
       </div>
 
@@ -75,8 +78,10 @@ export function CampaignDetail() {
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <StageBadge stage={stage} />
-            <span className="text-sm text-slate-500">Campaña #{view.id.toString()}</span>
+            <StageBadge stage={stage} milestone={m} />
+            <span className="text-sm text-slate-500">
+              {tr("Campaña", "Campaign")} #{view.id.toString()}
+            </span>
           </div>
           <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">{campaign.name}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
@@ -88,21 +93,21 @@ export function CampaignDetail() {
               <MapPin className="h-4 w-4" /> {campaign.location || "Colombia"}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <CalendarClock className="h-4 w-4" /> Cierra el {formatDate(campaign.deadline)}
+              <CalendarClock className="h-4 w-4" /> {tr("Cierra el", "Closes on")} {formatDate(campaign.deadline)}
             </span>
           </div>
 
           {(isOwner || isAdmin) && (
             <div className="mt-5 flex flex-wrap gap-2">
               <button type="button" className="btn-outline !py-2" onClick={() => setEditing(editing === "fotos" ? null : "fotos")}>
-                <ImageIcon className="h-4 w-4" /> Cambiar fotos
+                <ImageIcon className="h-4 w-4" /> {tr("Cambiar fotos", "Change photos")}
               </button>
               {profile.data && (
                 <button type="button" className="btn-outline !py-2" onClick={() => setEditing(editing === "perfil" ? null : "perfil")}>
-                  <Pencil className="h-4 w-4" /> Editar perfil de la fundación
+                  <Pencil className="h-4 w-4" /> {tr("Editar perfil de la fundación", "Edit nonprofit profile")}
                 </button>
               )}
-              {isAdmin && !isOwner && <span className="self-center text-xs text-slate-500">Como admin puedes editar cualquier campaña y fundación.</span>}
+              {isAdmin && !isOwner && <span className="self-center text-xs text-slate-500">{tr("Como admin puedes editar cualquier campaña y fundación.", "As an admin you can edit any campaign and nonprofit.")}</span>}
             </div>
           )}
           {editing === "fotos" && <MediaEditor campaignId={view.id} meta={media} onDone={() => setEditing(null)} />}
@@ -114,18 +119,18 @@ export function CampaignDetail() {
 
           {isOwner && (
             <Link to="/fundacion" className="mt-5 flex items-center gap-2 rounded-2xl bg-brand-50 p-4 text-sm font-semibold text-brand-800 ring-1 ring-brand-100 hover:bg-brand-100">
-              <Settings2 className="h-4 w-4" /> Esta campaña es de tu fundación. Gestiónala desde tu panel.
+              <Settings2 className="h-4 w-4" /> {tr("Esta campaña es de tu fundación. Gestiónala desde tu panel.", "This campaign belongs to your nonprofit. Manage it from your dashboard.")}
             </Link>
           )}
 
           <section className="mt-8">
-            <h2 className="text-xl font-semibold">Sobre la campaña</h2>
-            <p className="mt-3 leading-relaxed whitespace-pre-line text-slate-700">{campaign.description || "Sin descripción."}</p>
+            <h2 className="text-xl font-semibold">{tr("Sobre la campaña", "About the campaign")}</h2>
+            <p className="mt-3 leading-relaxed whitespace-pre-line text-slate-700">{campaign.description || tr("Sin descripción.", "No description.")}</p>
           </section>
 
           {galleryUrls.length > 0 && (
             <section className="mt-8">
-              <h2 className="text-xl font-semibold">Fotos de la causa</h2>
+              <h2 className="text-xl font-semibold">{tr("Fotos de la causa", "Photos of the cause")}</h2>
               <div className="mt-4">
                 <Gallery urls={galleryUrls} title={campaign.name} />
               </div>
@@ -137,8 +142,13 @@ export function CampaignDetail() {
           </div>
 
           <section className="card mt-8 p-6">
-            <h2 className="text-xl font-semibold">Ruta de los fondos</h2>
-            <p className="mt-1 text-sm text-slate-600">{STAGE_INFO[stage].hint}</p>
+            <h2 className="text-xl font-semibold">{tr("Ruta de los fondos", "Path of the funds")}</h2>
+            <p className="mt-1 text-sm text-slate-600">{stageInfo(stage, m).hint}</p>
+            {refundable(view) && (
+              <Link to="/mis-donaciones" className="mt-3 inline-flex text-sm font-semibold text-amber-800 underline">
+                {tr("¿Donaste? Pide tu reembolso en «Mis donaciones»", "Did you donate? Claim your refund in “My donations”")}
+              </Link>
+            )}
             <div className="mt-6">
               <MilestoneTrack view={view} milestones={milestones} />
             </div>
@@ -146,7 +156,7 @@ export function CampaignDetail() {
 
           {vault?.evidence_hash && (
             <section className="card mt-8 p-6">
-              <h2 className="text-xl font-semibold">Evidencia</h2>
+              <h2 className="text-xl font-semibold">{tr("Evidencia", "Evidence")}</h2>
               <div className="mt-4">
                 <EvidencePanel campaignId={view.id} evidenceHash={vault.evidence_hash} />
               </div>
@@ -155,11 +165,11 @@ export function CampaignDetail() {
 
           <section className="card mt-8 p-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Donaciones recientes</h2>
+              <h2 className="text-xl font-semibold">{tr("Donaciones recientes", "Recent donations")}</h2>
               {events.isFetching && <Spinner className="h-4 w-4 text-slate-400" />}
             </div>
             {donations.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-600">{events.isLoading ? "Cargando…" : "Todavía no hay donaciones recientes. ¡Puedes ser la primera persona!"}</p>
+              <p className="mt-3 text-sm text-slate-600">{events.isLoading ? tr("Cargando…", "Loading…") : tr("Todavía no hay donaciones. ¡Puedes ser la primera persona!", "No donations yet. You can be the first!")}</p>
             ) : (
               <ul className="mt-4 divide-y divide-slate-100">
                 {donations.slice(0, 20).map((d) => (
@@ -172,38 +182,49 @@ export function CampaignDetail() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-brand-900">{formatToken(d.net)}</p>
+                      <Money units={d.net} className="text-sm font-bold text-brand-900" fiatClassName="block text-[0.7rem] font-normal text-slate-500" />
                       <TxLink hash={d.txHash}>tx</TxLink>
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="hint mt-4">El historial sale de los eventos de Stellar copiados en BITAJÓN. El total recaudado siempre se lee del contrato.</p>
+            <p className="hint mt-4">{tr("El historial sale de los eventos de Stellar copiados en BITAJÓN. El total recaudado siempre se lee del contrato.", "The history comes from Stellar events copied into BITAJÓN. The total raised is always read from the contract.")}</p>
           </section>
 
           <section className="mt-8 rounded-2xl bg-sand p-5 text-sm">
-            <h2 className="font-display text-lg font-semibold">Datos on-chain</h2>
+            <h2 className="font-display text-lg font-semibold">{tr("Datos on-chain", "On-chain data")}</h2>
             <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Info label="Fundación" value={<AddressLink address={campaign.nonprofit} />} />
+              <Info label={tr("Fundación", "Nonprofit")} value={<AddressLink address={campaign.nonprofit} />} />
+              {vault && <Info label={tr("Verificador", "Verifier")} value={<AddressLink address={vault.verifier} />} />}
+              <Info label={tr("Primer desembolso", "First payout")} value={<span className="font-semibold text-brand-900">{m}%</span>} />
               <Info label="Token" value={<AddressLink address={campaign.token_address} kind="contract" />} />
-              <Info label="Registro de campañas" value={<AddressLink address={CONTRACTS.campaignRegistry} kind="contract" />} />
-              <Info label="Bóveda" value={<AddressLink address={CONTRACTS.campaignVault} kind="contract" />} />
+              <Info label={tr("Registro de campañas", "Campaign registry")} value={<AddressLink address={CONTRACTS.campaignRegistry} kind="contract" />} />
+              <Info label={tr("Bóveda", "Vault")} value={<AddressLink address={CONTRACTS.campaignVault} kind="contract" />} />
             </dl>
           </section>
         </div>
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="card p-6">
-            <p className="font-display text-3xl font-semibold text-brand-900">{formatToken(got)}</p>
-            <p className="text-sm text-slate-500">recaudado de {formatToken(campaign.target_amount)}</p>
+            <Money units={got} className="font-display text-3xl font-semibold text-brand-900" fiatClassName="block font-sans text-sm font-medium text-slate-500" />
+            <p className="mt-1 text-sm text-slate-500">
+              {tr("recaudado de", "raised of")} <Money units={campaign.target_amount} inline />
+            </p>
             <div className="mt-4">
               <ProgressBar value={pct} size="lg" />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <Mini label="Avance" value={`${Math.floor(pct)}%`} />
-              <Mini label="Donantes" value={events.isLoading ? "…" : String(donors)} icon={<Users className="h-3.5 w-3.5" />} />
-              <Mini label="Tiempo" value={timeLeftLabel(campaign.deadline).replace("Quedan ", "").replace("Queda ", "")} />
+              <Mini label={tr("Avance", "Progress")} value={`${Math.floor(pct)}%`} />
+              <Mini label={tr("Donantes", "Donors")} value={events.isLoading ? "…" : String(donors)} icon={<Users className="h-3.5 w-3.5" />} />
+                          <Mini
+              label={tr("Tiempo", "Time")}
+              value={
+                stage === "completed" || stage === "funded" || stage === "review" || stage === "cancelled" || stage === "paused"
+                  ? "—"
+                  : timeLeftLabel(campaign.deadline).replace("Quedan ", "").replace("Queda ", "").replace(" left", "")
+              }
+            />
             </div>
           </div>
           <div className="mt-4">
@@ -241,14 +262,14 @@ function NotFoundCampaign() {
     <div className="container-page py-16">
       <EmptyState
         icon={<MapPin className="h-6 w-6" />}
-        title="No encontramos esta campaña"
+        title={tr("No encontramos esta campaña", "We couldn't find this campaign")}
         action={
           <Link to="/campanas" className="btn-primary">
-            Ver campañas
+            {tr("Ver campañas", "See campaigns")}
           </Link>
         }
       >
-        Puede que el enlace esté mal o que la campaña todavía no exista en la red.
+        {tr("Puede que el enlace esté mal o que la campaña todavía no exista en la red.", "The link may be wrong or the campaign may not exist on the network yet.")}
       </EmptyState>
     </div>
   );

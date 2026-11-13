@@ -2,8 +2,10 @@ import { CalendarClock, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCampaignMetaMap, useNonprofitMeta, useProfile } from "../hooks/queries";
 import { BUCKETS, publicUrl } from "../lib/offchain";
-import { formatToken, percent, timeLeftLabel } from "../lib/format";
-import { raised, stageOf } from "../lib/status";
+import { Money, useMoneyText } from "../lib/currency";
+import { percent, timeLeftLabel } from "../lib/format";
+import { tr } from "../lib/i18n";
+import { milestoneOf, raised, stageOf } from "../lib/status";
 import type { CampaignView } from "../lib/stellar";
 import { CampaignCover } from "./CampaignCover";
 import { ProgressBar, StageBadge } from "./ui";
@@ -14,9 +16,16 @@ export function CampaignCard({ view }: { view: CampaignView }) {
   const got = raised(view);
   const pct = percent(got, campaign.target_amount);
   const profile = useProfile(campaign.nonprofit);
+  const money = useMoneyText();
   const nonprofitMeta = useNonprofitMeta(campaign.nonprofit);
   const metaMap = useCampaignMetaMap();
   const cover = publicUrl(BUCKETS.media, metaMap.data?.get(view.id.toString())?.cover_path);
+  const timeLabel =
+    stage === "completed" ? tr("Completada", "Completed")
+    : stage === "funded" || stage === "review" ? tr("Meta alcanzada", "Goal reached")
+    : stage === "cancelled" ? tr("Cancelada", "Cancelled")
+    : stage === "paused" ? tr("Pausada", "Paused")
+    : timeLeftLabel(campaign.deadline);
 
   return (
     <Link
@@ -26,19 +35,21 @@ export function CampaignCard({ view }: { view: CampaignView }) {
       <CampaignCover name={campaign.name} description={campaign.description} imageUrl={cover} />
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <StageBadge stage={stage} />
+          <StageBadge stage={stage} milestone={milestoneOf(view)} />
           <span className="text-xs font-medium text-slate-400">#{view.id.toString()}</span>
         </div>
         <h3 className="line-clamp-2 text-lg leading-snug font-semibold group-hover:text-brand-700">{campaign.name}</h3>
         <p className="mt-1 line-clamp-1 text-sm text-slate-500">
-          {nonprofitMeta.data?.display_name || profile.data?.legal_name || "Fundación verificada"}
+          {nonprofitMeta.data?.display_name || profile.data?.legal_name || tr("Fundación verificada", "Verified nonprofit")}
         </p>
         <div className="mt-4 flex-1" />
         <ProgressBar value={pct} />
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
-            <p className="text-base font-bold text-brand-900">{formatToken(got)}</p>
-            <p className="text-xs text-slate-500">de {formatToken(campaign.target_amount)}</p>
+            <Money units={got} className="text-base font-bold text-brand-900" fiatClassName="block text-[0.7rem] font-medium text-slate-500" />
+            <p className="text-xs text-slate-500">
+              {tr("de", "of")} {money(campaign.target_amount)}
+            </p>
           </div>
           <p className="text-sm font-bold text-leaf-700">{Math.floor(pct)}%</p>
         </div>
@@ -46,8 +57,8 @@ export function CampaignCard({ view }: { view: CampaignView }) {
           <span className="inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" /> {campaign.location || "Colombia"}
           </span>
-          <span className="inline-flex items-center gap-1">
-            <CalendarClock className="h-3.5 w-3.5" /> {timeLeftLabel(campaign.deadline)}
+           <span className="inline-flex items-center gap-1">
+            <CalendarClock className="h-3.5 w-3.5" /> {timeLabel}
           </span>
         </div>
       </div>

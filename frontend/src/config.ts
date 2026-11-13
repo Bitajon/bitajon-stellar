@@ -13,44 +13,36 @@ export const HORIZON_URL = pick(env.VITE_HORIZON_URL, "https://horizon-testnet.s
 export const FRIENDBOT_URL = pick(env.VITE_FRIENDBOT_URL, "https://friendbot.stellar.org");
 export const EXPLORER_URL = pick(env.VITE_EXPLORER_URL, "https://stellar.expert/explorer/testnet");
 
+// Contratos v0.2.1 desplegados por Andrés (README del monorepo). El admin on-chain de los
+// cuatro contratos es el governance-account (multisig Ed25519), no una wallet normal.
 export const CONTRACTS = {
-  nonprofitRegistry: pick(
-    env.VITE_NONPROFIT_REGISTRY_ID,
-    "CA5LHUGEJ4S6XJV5ZBCOOKIWAARGA7QSZERAAUM2NVWCXHDPRRSFT55K",
-  ),
-  campaignRegistry: pick(
-    env.VITE_CAMPAIGN_REGISTRY_ID,
-    "CCZPWOKGTLT2UWLZEGYC55BPLR4GLZOUGCBVDXEEFSLE5QPVPMMU7EZR",
-  ),
-  campaignVault: pick(
-    env.VITE_CAMPAIGN_VAULT_ID,
-    "CARMUNTRKKX6KA7ZXVMYVZVAZ5DLZF5B53V5K6J5OE3CMFYGB7FWCCTT",
-  ),
-  donationRouter: pick(
-    env.VITE_DONATION_ROUTER_ID,
-    "CAZ5WAOUTXF5E6OWZ6AAIPQVUXLAJKNUTC3RG266Q47WR2LD2WJSRLSD",
-  ),
+  nonprofitRegistry: pick(env.VITE_NONPROFIT_REGISTRY_ID, "CADYPVOA7SUTBVG5IICFNDHQKOXG7VLT6ANCNNOLNDKNFHFJWQ5N3RH2"),
+  campaignRegistry: pick(env.VITE_CAMPAIGN_REGISTRY_ID, "CC5TYZBWM56HPTVBNUQYEX6VQBHU7ZOQGR2I3B42ZIGECQ3PWN6I7WJ6"),
+  campaignVault: pick(env.VITE_CAMPAIGN_VAULT_ID, "CBX5Z2U67JYBI6OGGYMARJ5IT6TZS3TELIKGS2FJTODS4KSCC767HXWR"),
+  donationRouter: pick(env.VITE_DONATION_ROUTER_ID, "CCK57ZWLKAUEC6DJ2GV3WHMJMO3ERN4H7K44TS36AMJ2N3S7VOREGR67"),
 } as const;
 
-export const CONTRACT_LABELS: Record<keyof typeof CONTRACTS, string> = {
-  nonprofitRegistry: "Registro de fundaciones",
-  campaignRegistry: "Registro de campañas",
-  campaignVault: "Bóveda de custodia",
-  donationRouter: "Router de donaciones",
-};
+export const GOVERNANCE_ID = pick(env.VITE_GOVERNANCE_ID, "CB5EDLYZ27U5JUNYCTLMANIMBV2WQ3DMXJV6AQJ7X43UYQ77EGX62X2U");
 
-export const ADMIN_ADDRESS = pick(
-  env.VITE_ADMIN_ADDRESS,
-  "GCER47WZXN4AEDO7Y5SJYD4KVCXKABWQG2X5KLSPSAGOEGVDS4Y6BBW5",
-);
+export const CONTRACT_LABELS: Record<keyof typeof CONTRACTS, [string, string]> = {
+  nonprofitRegistry: ["Registro de fundaciones", "Nonprofit registry"],
+  campaignRegistry: ["Registro de campañas", "Campaign registry"],
+  campaignVault: ["Bóveda de custodia", "Custody vault"],
+  donationRouter: ["Router de donaciones", "Donation router"],
+};
 
 /** Contrato SAC del token de las campañas. Por defecto, el XLM nativo de la red. */
 export const TOKEN_ADDRESS = pick(env.VITE_TOKEN_ADDRESS, Asset.native().contractId(NETWORK_PASSPHRASE));
 export const TOKEN_SYMBOL = pick(env.VITE_TOKEN_SYMBOL, "XLM");
 export const TOKEN_DECIMALS = Number(pick(env.VITE_TOKEN_DECIMALS, "7"));
 
-/** Porcentaje que se libera al llegar a la meta (DEFAULT_MILESTONE_PERCENTAGE en los contratos). */
-export const MILESTONE_PERCENTAGE = 50;
+/** % que se libera al llegar a la meta: lo elige la fundación entre 1 y 90 (sugerido 50). */
+export const MILESTONE_MIN = 1;
+export const MILESTONE_MAX = 90;
+export const MILESTONE_RECOMMENDED = 50;
+
+/* Blux: login con correo para las fundaciones (App ID público del panel de Blux). */
+export const BLUX_APP_ID = pick(env.VITE_BLUX_APP_ID, "uz6szcu7lig9vr4flovi");
 
 /* Supabase: imágenes, redes sociales, evidencia y RUT (fuera de la cadena). */
 export const SUPABASE_URL = pick(env.VITE_SUPABASE_URL, "https://vfvsdztgkndeundarbzw.supabase.co");

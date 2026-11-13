@@ -1,4 +1,5 @@
 import { EXPLORER_URL, TOKEN_DECIMALS, TOKEN_SYMBOL } from "../config";
+import { getLang, locale, tr } from "./i18n";
 
 const SCALE = 10n ** BigInt(TOKEN_DECIMALS);
 
@@ -9,8 +10,9 @@ export function formatAmount(units: bigint, maxDecimals = 2): string {
   const whole = abs / SCALE;
   const frac = abs % SCALE;
   const fracStr = frac.toString().padStart(TOKEN_DECIMALS, "0").slice(0, maxDecimals).replace(/0+$/, "");
-  const wholeStr = whole.toLocaleString("es-CO");
-  return `${negative ? "-" : ""}${wholeStr}${fracStr ? "," + fracStr : ""}`;
+  const wholeStr = whole.toLocaleString(locale());
+  const dec = getLang() === "en" ? "." : ",";
+  return `${negative ? "-" : ""}${wholeStr}${fracStr ? dec + fracStr : ""}`;
 }
 
 export function formatToken(units: bigint, maxDecimals = 2): string {
@@ -24,8 +26,13 @@ export function formatToken(units: bigint, maxDecimals = 2): string {
 export function parseAmount(input: string): bigint | null {
   let s = input.trim().replace(/\s/g, "");
   if (s === "") return null;
-  // Si trae coma, la coma es el decimal y los puntos son miles (formato colombiano).
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  if (getLang() === "en") {
+    // Formato en inglés: la coma separa miles y el punto es el decimal.
+    s = s.replace(/,/g, "");
+  } else if (s.includes(",")) {
+    // Formato colombiano: la coma es el decimal y los puntos son miles.
+    s = s.replace(/\./g, "").replace(",", ".");
+  }
   if (!/^\d+(\.\d+)?$/.test(s)) return null;
   const [whole, frac = ""] = s.split(".");
   if (frac.length > TOKEN_DECIMALS) return null;
@@ -49,7 +56,7 @@ export function shortAddress(address: string, chars = 4): string {
 
 export function formatDate(unixSeconds: bigint | number): string {
   const d = new Date(Number(unixSeconds) * 1000);
-  return d.toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
 }
 
 export function daysLeft(unixSeconds: bigint | number): number {
@@ -58,22 +65,22 @@ export function daysLeft(unixSeconds: bigint | number): number {
 }
 
 export function timeLeftLabel(unixSeconds: bigint | number): string {
+  if (Number(unixSeconds) * 1000 <= Date.now()) return tr("Cerrada", "Closed");
   const d = daysLeft(unixSeconds);
-  if (d < 0) return "Cerrada";
-  if (d === 0) return "Cierra hoy";
-  if (d === 1) return "Queda 1 día";
-  return `Quedan ${d} días`;
+  if (d === 0) return tr("Cierra hoy", "Closes today");
+  if (d === 1) return tr("Queda 1 día", "1 day left");
+  return tr(`Quedan ${d} días`, `${d} days left`);
 }
 
 export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diff / 60000);
-  if (mins < 1) return "hace un momento";
-  if (mins < 60) return `hace ${mins} min`;
+  if (mins < 1) return tr("hace un momento", "just now");
+  if (mins < 60) return tr(`hace ${mins} min`, `${mins} min ago`);
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `hace ${hours} h`;
+  if (hours < 24) return tr(`hace ${hours} h`, `${hours} h ago`);
   const days = Math.round(hours / 24);
-  return `hace ${days} ${days === 1 ? "día" : "días"}`;
+  return tr(`hace ${days} ${days === 1 ? "día" : "días"}`, `${days} ${days === 1 ? "day" : "days"} ago`);
 }
 
 export const explorer = {
@@ -84,4 +91,18 @@ export const explorer = {
 
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Unidades mínimas → número de XLM (para conversiones aproximadas, no para montos exactos). */
+export function unitsToNumber(units: bigint): number {
+  return Number(units) / Number(SCALE);
+}
+
+export type Fiat = "COP" | "USD";
+
+/** "$ 58.400 COP" / "US$ 17.60". */
+export function formatFiat(value: number, fiat: Fiat): string {
+  if (fiat === "COP")
+    return `$ ${Math.round(value).toLocaleString(locale(), { maximumFractionDigits: 0 })} COP`;
+  return `US$ ${value.toLocaleString(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

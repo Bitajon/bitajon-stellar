@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { coverFor } from "../lib/covers";
+import { tr } from "../lib/i18n";
 
 /**
  * Portada de campaña: la foto que subió la fundación, o una ilustración generada
@@ -24,7 +25,7 @@ export function CampaignCover({
   if (imageUrl && !failed) {
     return (
       <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
-        <img src={imageUrl} alt={`Foto de la campaña ${name}`} className="h-full w-full object-cover" loading="lazy" onError={() => setFailed(true)} />
+        <img src={imageUrl} alt={tr(`Foto de la campaña ${name}`, `Photo of the campaign ${name}`)} className="h-full w-full object-cover" loading="lazy" onError={() => setFailed(true)} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-brand-950/35 via-transparent to-transparent" />
       </div>
     );

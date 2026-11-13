@@ -1,7 +1,8 @@
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { explorer, shortAddress } from "../lib/format";
-import { STAGE_INFO, type Stage } from "../lib/status";
+import { tr } from "../lib/i18n";
+import { stageInfo, type Stage } from "../lib/status";
 
 export function Spinner({ className = "h-5 w-5" }: { className?: string }) {
   return <Loader2 className={`${className} animate-spin`} aria-hidden />;
@@ -22,8 +23,8 @@ export function ProgressBar({ value, size = "md" }: { value: number; size?: "sm"
   );
 }
 
-export function StageBadge({ stage }: { stage: Stage }) {
-  const info = STAGE_INFO[stage];
+export function StageBadge({ stage, milestone }: { stage: Stage; milestone?: number }) {
+  const info = stageInfo(stage, milestone);
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${info.tone}`}>
       {info.label}
@@ -31,7 +32,7 @@ export function StageBadge({ stage }: { stage: Stage }) {
   );
 }
 
-export function CopyButton({ value, label = "Copiar" }: { value: string; label?: string }) {
+export function CopyButton({ value, label = tr("Copiar", "Copy") }: { value: string; label?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -60,7 +61,7 @@ export function AddressLink({ address, kind = "account", chars = 4 }: { address:
       <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-brand-700 underline-offset-2 hover:underline" title={address}>
         {shortAddress(address, chars)}
       </a>
-      <CopyButton value={address} label="Copiar dirección" />
+      <CopyButton value={address} label={tr("Copiar dirección", "Copy address")} />
     </span>
   );
 }
@@ -69,7 +70,7 @@ export function TxLink({ hash, children }: { hash: string; children?: ReactNode 
   if (!hash) return null;
   return (
     <a href={explorer.tx(hash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
-      {children ?? "Ver transacción"} <ExternalLink className="h-3 w-3" />
+      {children ?? tr("Ver transacción", "View transaction")} <ExternalLink className="h-3 w-3" />
     </a>
   );
 }
@@ -85,14 +86,14 @@ export function EmptyState({ icon, title, children, action }: { icon: ReactNode;
   );
 }
 
-export function ErrorBox({ title = "No se pudo cargar la información", error, onRetry }: { title?: string; error: unknown; onRetry?: () => void }) {
+export function ErrorBox({ title = tr("No se pudo cargar la información", "Could not load the information"), error, onRetry }: { title?: string; error: unknown; onRetry?: () => void }) {
   return (
     <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
       <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-rose-800/80">{error instanceof Error ? error.message : "Revisa tu conexión e inténtalo de nuevo."}</p>
+      <p className="mt-1 text-rose-800/80">{error instanceof Error ? error.message : tr("Revisa tu conexión e inténtalo de nuevo.", "Check your connection and try again.")}</p>
       {onRetry && (
         <button type="button" onClick={onRetry} className="mt-3 text-sm font-semibold text-rose-900 underline">
-          Reintentar
+          {tr("Reintentar", "Retry")}
         </button>
       )}
     </div>

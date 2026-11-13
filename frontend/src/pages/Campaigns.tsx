@@ -4,22 +4,26 @@ import { Link } from "react-router-dom";
 import { CampaignCard } from "../components/CampaignCard";
 import { EmptyState, ErrorBox, PageHeader, SkeletonCard } from "../components/ui";
 import { useCampaigns } from "../hooks/queries";
+import { tr } from "../lib/i18n";
 import { stageOf, type Stage } from "../lib/status";
 
-const FILTERS: { key: "all" | "open" | "progress" | "done"; label: string; stages: Stage[] | null }[] = [
-  { key: "all", label: "Todas", stages: null },
-  { key: "open", label: "Recibiendo donaciones", stages: ["active"] },
-  { key: "progress", label: "En ejecución", stages: ["funded", "review"] },
-  { key: "done", label: "Completadas", stages: ["completed"] },
+type FilterKey = "all" | "open" | "progress" | "done" | "refund";
+const filters = (): { key: FilterKey; label: string; stages: Stage[] | null }[] => [
+  { key: "all", label: tr("Todas", "All"), stages: null },
+  { key: "open", label: tr("Recibiendo donaciones", "Accepting donations"), stages: ["active"] },
+  { key: "progress", label: tr("En ejecución", "In progress"), stages: ["funded", "review"] },
+  { key: "done", label: tr("Completadas", "Completed"), stages: ["completed"] },
+  { key: "refund", label: tr("Con reembolso", "Refundable"), stages: ["expired", "cancelled", "paused"] },
 ];
 
 export function Campaigns() {
   const campaigns = useCampaigns();
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>("all");
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const FILTERS = filters();
   const [q, setQ] = useState("");
 
   const list = useMemo(() => {
-    const f = FILTERS.find((x) => x.key === filter)!;
+    const f = filters().find((x) => x.key === filter)!;
     const term = q.trim().toLowerCase();
     return (campaigns.data ?? [])
       .filter((v) => (f.stages ? f.stages.includes(stageOf(v)) : stageOf(v) !== "draft"))
@@ -31,8 +35,11 @@ export function Campaigns() {
 
   return (
     <>
-      <PageHeader eyebrow="Campañas" title="Elige a quién apoyar">
-        Todas las campañas son de fundaciones aprobadas. Tu donación queda en custodia hasta que la campaña llega a su meta.
+      <PageHeader eyebrow={tr("Campañas", "Campaigns")} title={tr("Elige a quién apoyar", "Choose who to support")}>
+        {tr(
+          "Todas las campañas son de fundaciones aprobadas. Tu donación queda en custodia hasta que la campaña llega a su meta.",
+          "All campaigns belong to approved nonprofits. Your donation stays in custody until the campaign reaches its goal.",
+        )}
       </PageHeader>
       <section className="container-page py-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -53,9 +60,9 @@ export function Campaigns() {
             ))}
           </div>
           <label className="relative sm:w-72">
-            <span className="sr-only">Buscar campañas</span>
+            <span className="sr-only">{tr("Buscar campañas", "Search campaigns")}</span>
             <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className="input !rounded-full !py-2.5 !pl-10" placeholder="Buscar por nombre o lugar" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input !rounded-full !py-2.5 !pl-10" placeholder={tr("Buscar por nombre o lugar", "Search by name or place")} value={q} onChange={(e) => setQ(e.target.value)} />
           </label>
         </div>
 
@@ -71,14 +78,14 @@ export function Campaigns() {
           ) : list.length === 0 ? (
             <EmptyState
               icon={<Sprout className="h-6 w-6" />}
-              title={q || filter !== "all" ? "No hay campañas con ese filtro" : "Todavía no hay campañas"}
+              title={q || filter !== "all" ? tr("No hay campañas con ese filtro", "No campaigns match that filter") : tr("Todavía no hay campañas", "No campaigns yet")}
               action={
                 <Link to="/fundacion" className="btn-primary">
-                  Publicar una campaña
+                  {tr("Publicar una campaña", "Publish a campaign")}
                 </Link>
               }
             >
-              Las campañas aparecen cuando la fundación abre su bóveda para recibir donaciones.
+              {tr("Las campañas aparecen cuando la fundación abre su bóveda para recibir donaciones.", "Campaigns appear when the nonprofit opens its vault to receive donations.")}
             </EmptyState>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
