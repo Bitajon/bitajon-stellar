@@ -85,9 +85,13 @@ function Inner() {
           </h2>
           <p className="mt-1 text-sm text-amber-900">
             {tr(
-              "Estas campañas no llegaron a la meta, se cancelaron o están pausadas. El contrato te devuelve lo que aportaste.",
-              "These campaigns didn't reach their goal, were cancelled or are paused. The contract returns what you gave.",
+              "Estas campañas no llegaron a la meta, se cancelaron o están pausadas. El contrato te devuelve lo que aportaste. Después, si quieres, puedes donarlo a otra causa desde ",
+              "These campaigns didn't reach their goal, were cancelled or are paused. The contract returns what you gave. Afterwards, if you wish, you can give it to another cause from ",
             )}
+            <Link to="/campanas" className="font-semibold underline">
+              {tr("Campañas", "Campaigns")}
+            </Link>
+            .
           </p>
           <ul className="mt-4 space-y-3">
             {refunds.map((r) => (

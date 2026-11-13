@@ -95,7 +95,7 @@ export function Home() {
       {/* CONFIANZA */}
       <section className="border-y border-slate-200/70 bg-white">
         <div className="container-page grid gap-6 py-8 sm:grid-cols-3">
-          <Trust icon={<ShieldCheck className="h-5 w-5" />} title={tr("Nadie toca tu aporte", "Nobody touches your gift")} text={tr("Un contrato inteligente lo custodia, no una persona.", "A smart contract holds it, not a person.")} />
+          <Trust icon={<ShieldCheck className="h-5 w-5" />} title={tr("Tu aporte sigue reglas públicas", "Your gift follows public rules")} text={tr("Un contrato inteligente lo custodia: nadie puede moverlo por fuera de esas reglas.", "A smart contract holds it: nobody can move it outside those rules.")} />
           <Trust icon={<Eye className="h-5 w-5" />} title={tr("Todo es verificable", "Everything is verifiable")} text={tr("Cada donación y liberación queda en el explorador público.", "Every donation and release is in the public explorer.")} />
           <Trust icon={<HeartHandshake className="h-5 w-5" />} title={tr("Resultados, no promesas", "Results, not promises")} text={tr("El último pago depende de la evidencia de la fundación. Si no llega a la meta, puedes recuperar tu aporte.", "The last payment depends on the nonprofit's evidence. If the goal isn't reached, you can get your gift back.")} />
         </div>

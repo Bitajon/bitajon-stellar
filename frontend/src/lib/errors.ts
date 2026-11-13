@@ -61,7 +61,7 @@ export function friendlyError(err: unknown): string {
   if (lower.includes("user declined") || lower.includes("rejected") || lower.includes("denied") || lower.includes("closed the modal"))
     return tr("Cancelaste la firma.", "You cancelled the signature.");
   if (lower.includes("error(auth")) return tr("La firma no autoriza esta operación.", "The signature does not authorize this operation.");
-  if (lower.includes("account not found") || lower.includes("404"))
+  if (lower.includes("account not found") || /\b404\b/.test(lower))
     return tr("Tu cuenta aún no existe en la red. Usa el botón para obtener XLM de prueba.", "Your account does not exist on the network yet. Use the button to get test XLM.");
   if (lower.includes("insufficient") || lower.includes("balance") || lower.includes("underfunded"))
     return tr("No tienes saldo suficiente para esta operación.", "You don't have enough balance for this operation.");

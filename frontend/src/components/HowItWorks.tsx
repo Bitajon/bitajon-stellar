@@ -11,10 +11,13 @@ const steps = () => [
     ),
   },
   {
-    icon: Target,
-    title: tr("Campañas con un fin concreto", "Campaigns with a clear purpose"),
-    text: tr("Kits escolares, Navidad, la fiesta del niño: cada campaña tiene meta, fecha límite y lugar.", "School kits, Christmas, Children's Day: every campaign has a goal, a deadline and a place."),
-  },
+  icon: Target,
+  title: tr("Campañas con un fin concreto", "Campaigns with a clear purpose"),
+  text: tr(
+    "Kits escolares, Navidad, la fiesta del niño: cada campaña tiene meta, fecha límite y lugar. BITAJÓN no cobra comisiones a las fundaciones ni a las ONG e invita a los donantes a dar una comisión tipo propina para mantener el funcionamiento de la plataforma.",
+    "School kits, Christmas, Children's Day: every campaign has a goal, a deadline and a place. BITAJÓN does not charge nonprofits or NGOs any fees and invites donors to give a tip-style fee to keep the platform running.",
+  ),
+},
   {
     icon: LockKeyhole,
     title: tr("Tu aporte queda en custodia", "Your gift is held in custody"),
@@ -23,22 +26,23 @@ const steps = () => [
       "Your donation doesn't go to a bank account: it's held in a smart contract that nobody can move at will.",
     ),
   },
+
   {
-    icon: HandCoins,
-    title: tr("Primer desembolso al llegar a la meta", "First payout when the goal is reached"),
-    text: tr(
-      "Cuando la campaña alcanza su meta, el contrato libera automáticamente el porcentaje que eligió la fundación (por ejemplo 50%).",
-      "When the campaign reaches its goal, the contract automatically releases the percentage the nonprofit chose (for example 50%).",
+  icon: HandCoins,
+  title: tr("Primer desembolso al llegar a la meta", "First payout when the goal is reached"),
+  text: tr(
+      "Cuando la campaña alcanza su meta, el contrato libera automáticamente el porcentaje que eligió la fundación (por ejemplo 50%). Si no la alcanza, tu aporte no queda atrapado: puedes recuperarlo y, si quieres, destinarlo a otra causa. Nadie puede desviarlo: solo puede ir a la fundación según las reglas del contrato o volver a ti.",
+      "When the campaign reaches its goal, the contract automatically releases the percentage the nonprofit chose (for example 50%). If it doesn't, your gift isn't stuck: you can get it back and, if you wish, give it to another cause. Nobody can divert it: it can only go to the nonprofit under the contract's rules or back to you.",
     ),
   },
-  {
-    icon: FileCheck2,
-    title: tr("El resto contra evidencia", "The rest against evidence"),
-    text: tr(
-      "La fundación sube fotos o facturas. Al validarlas, se libera el resto. Si la campaña no llega a la meta, puedes pedir tu reembolso.",
-      "The nonprofit uploads photos or invoices. Once validated, the rest is released. If the campaign doesn't reach its goal, you can claim a refund.",
-    ),
-  },
+{
+  icon: FileCheck2,
+  title: tr("El resto contra evidencia", "The rest against evidence"),
+  text: tr(
+    "La fundación sube fotos o facturas. Al validarlas, se libera el resto. La huella de la evidencia queda pública y cualquiera puede comprobarla.",
+    "The nonprofit uploads photos or invoices. Once validated, the rest is released. The evidence fingerprint is public and anyone can check it.",
+  ),
+},
 ];
 
 export function HowItWorks({ compact = false }: { compact?: boolean }) {

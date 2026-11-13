@@ -32,8 +32,8 @@ const faq = () => [
   {
     q: tr("¿Qué pasa si la campaña no llega a la meta?", "What if the campaign doesn't reach its goal?"),
     a: tr(
-      "Si la fecha límite pasa sin llegar a la meta, si la fundación cancela la campaña o si el admin la pausa, cada donante puede pedir el reembolso de su aporte desde «Mis donaciones». El contrato devuelve el dinero directamente a tu wallet.",
-      "If the deadline passes without reaching the goal, if the nonprofit cancels the campaign or if the admin pauses it, every donor can claim a refund from “My donations”. The contract sends the money straight back to your wallet.",
+      "Si la fecha límite pasa sin llegar a la meta, si la fundación cancela la campaña o si el admin la pausa, cada donante puede reclamar el reembolso de su aporte desde «Mis donaciones»: el contrato lo devuelve directo a tu wallet. Desde ahí puedes donar ese monto a otra causa. Hoy esa decisión la firmas tú; que una plataforma lo reasigne automáticamente, con tu autorización previa, está en nuestra hoja de ruta.",
+      "If the deadline passes without reaching the goal, if the nonprofit cancels the campaign or if the admin pauses it, every donor can claim a refund from “My donations”: the contract sends it straight back to your wallet. From there you can give that amount to another cause. Today you sign that decision yourself; automatic reallocation by the platform, with your prior authorization, is on our roadmap.",
     ),
   },
   {
@@ -46,8 +46,8 @@ const faq = () => [
   {
     q: tr("¿Quién es el admin de la plataforma?", "Who is the platform admin?"),
     a: tr(
-      "No es una sola persona: es una cuenta multifirma en la red (governance-account). Aprobar fundaciones o pausar una campaña necesita la firma de sus firmantes autorizados.",
-      "It's not a single person: it's a multisig account on the network (governance-account). Approving nonprofits or pausing a campaign requires its authorized signers.",
+      "No es una wallet personal: es una cuenta multifirma en la red (governance-account). Hoy opera con umbral de una firma; subir el umbral y sumar firmantes externos es parte de la hoja de ruta antes de producción.",
+      "It's not a personal wallet: it's a multisig account on the network (governance-account). Today it runs with a one-signature threshold; raising the threshold and adding external signers is on the roadmap before production.",
     ),
   },
   {
@@ -71,6 +71,15 @@ const faq = () => [
       "No. They can sign in with their email: they get a code and their Stellar account is created automatically. Later they can link their own wallet (Varial) to withdraw funds.",
     ),
   },
+
+  {
+    q: tr("¿BITAJÓN cobra comisiones?", "Does BITAJÓN charge fees?"),
+    a: tr(
+      "No a las fundaciones ni a las ONG: reciben el 100% de lo que llega a la campaña. La plataforma invita a los donantes a dar una comisión tipo propina para mantener su funcionamiento. Hoy la comisión está en 0% y el contrato tiene un tope de 10%; siempre ves el desglose antes de donar.",
+      "Not nonprofits or NGOs: they receive 100% of what reaches the campaign. The platform invites donors to give a tip-style fee to keep it running. Today the fee is 0% and the contract caps it at 10%; you always see the breakdown before donating.",
+    ),
+  },
+
   {
     q: tr("¿Necesito criptomonedas? ¿Cuánto es en pesos?", "Do I need crypto? How much is it in dollars?"),
     a: tr(

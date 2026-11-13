@@ -128,6 +128,15 @@ export function DonateCard({ view }: { view: CampaignView }) {
         {gross && toFiat(quote.data?.net_amount ?? gross) && <p className="text-right text-xs text-slate-500">≈ {toFiat(quote.data?.net_amount ?? gross)}</p>}
       </dl>
 
+            {feeBps === 0 && (
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          {tr(
+            "En esta demo la comisión de plataforma es 0%. La fundación nunca paga comisión: BITAJÓN se sostiene con una propina voluntaria de los donantes, que se activará en producción.",
+            "In this demo the platform fee is 0%. The nonprofit never pays a fee: BITAJÓN is sustained by a voluntary tip from donors, which will be enabled in production.",
+          )}
+        </p>
+      )}
+
       <div className="mt-5">
         {address ? (
           <button type="button" className="btn-primary w-full !py-3.5 text-base" disabled={pending || Boolean(problem)} onClick={onDonate}>
@@ -151,12 +160,14 @@ export function DonateCard({ view }: { view: CampaignView }) {
           {tr("Donación registrada.", "Donation recorded.")} <TxLink hash={lastHash}>{tr("Verla en el explorador", "View it in the explorer")}</TxLink>
         </div>
       )}
+      
       <p className="mt-4 text-xs leading-relaxed text-slate-500">
         {tr(
-          `Tu aporte queda en la bóveda de la campaña. La fundación recibe el ${m}% al llegar a la meta y el ${100 - m}% restante cuando se valida su evidencia. Si la campaña no llega a la meta, puedes pedir tu reembolso.`,
-          `Your gift stays in the campaign's vault. The nonprofit receives ${m}% when the goal is reached and the remaining ${100 - m}% once its evidence is validated. If the campaign doesn't reach its goal, you can claim a refund.`,
+          `Tu aporte queda en la bóveda de la campaña. La fundación recibe el ${m}% al llegar a la meta y el ${100 - m}% restante cuando se valida su evidencia. Si la campaña no llega a la meta, puedes reclamar el reembolso del monto que llegó a la campaña y, si quieres, donarlo a otra causa. Nadie puede desviar tu aporte: solo puede ir a la fundación según las reglas del contrato o volver a ti.`,
+          `Your gift stays in the campaign's vault. The nonprofit receives ${m}% when the goal is reached and the remaining ${100 - m}% once its evidence is validated. If the campaign doesn't reach the goal, you can claim a refund of the amount that reached the campaign and, if you wish, give it to another cause. Nobody can divert your gift: it can only go to the nonprofit under the contract's rules or back to you.`,
         )}
       </p>
+
       <div className="mt-2">
         <PriceNote />
       </div>

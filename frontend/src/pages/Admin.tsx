@@ -178,10 +178,10 @@ function TeamStatus() {
       <h2 className="flex items-center gap-2 text-xl font-semibold">
         <KeyRound className="h-5 w-5 text-leaf-600" /> {tr("Cuenta del equipo", "Team account")}
       </h2>
-      <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-slate-600">
         {tr(
-          "Es la que firma las acciones de admin (como firmante del governance-account multisig) y la verificadora de las bóvedas. Su llave vive cifrada en el servidor de BITAJÓN.",
-          "It signs admin actions (as a signer of the multisig governance-account) and is the vaults' verifier. Its key lives encrypted on the BITAJÓN server.",
+          "Es la que firma las acciones de admin (como firmante del governance-account multisig) y la verificadora de las bóvedas. Su llave se guarda en una tabla privada del servidor de BITAJÓN, sin acceso público.",
+          "It signs admin actions (as a signer of the multisig governance-account) and is the vaults' verifier. Its key is stored in a private table on the BITAJÓN server, with no public access.",
         )}
       </p>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
