@@ -1,48 +1,73 @@
-import { Mail, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
+import { ShieldCheck, Sparkles, Wallet } from "lucide-react";
 import { tr } from "../lib/i18n";
 import { useWallet } from "../lib/wallet";
-import { ConnectButton, EmailLoginButton } from "./ConnectButton";
 
-/**
- * Pide entrar antes de mostrar `children`.
- * `allowEmail`: también ofrece entrar con correo (fundaciones).
- */
-export function RequireWallet({ children, title, text, allowEmail = false }: { children: ReactNode; title: string; text: string; allowEmail?: boolean }) {
-  const { address } = useWallet();
-  if (address) return <>{children}</>;
+type RequireWalletProps = {
+  children: ReactNode;
+  allowEmail?: boolean;
+  title?: string;
+  text?: string;
+};
+
+export function RequireWallet({
+  children,
+  title,
+  text,
+}: RequireWalletProps) {
+  const { address, googleUser, openAuth } = useWallet();
+
+  if (address) {
+    return <>{children}</>;
+  }
+
   return (
-    <div className="card mx-auto flex max-w-lg flex-col items-center px-6 py-12 text-center">
-      <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-700">
-        {allowEmail ? <Mail className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
+    <div className="card mx-auto max-w-xl p-8 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-700">
+        {googleUser ? (
+          <Sparkles className="h-6 w-6 text-leaf-600" />
+        ) : (
+          <Wallet className="h-6 w-6" />
+        )}
       </div>
-      <h2 className="text-2xl font-semibold">{title}</h2>
-      <p className="mt-2 text-sm text-slate-600">{text}</p>
-      {allowEmail ? (
-        <div className="mt-6 flex w-full max-w-xs flex-col gap-3">
-          <EmailLoginButton full />
-          <p className="text-xs font-semibold tracking-wide text-slate-400 uppercase">{tr("o", "or")}</p>
-          <ConnectButton full />
-        </div>
-      ) : (
-        <div className="mt-6">
-          <ConnectButton />
-        </div>
-      )}
-      <p className="mt-4 text-xs text-slate-500">
-        {allowEmail
+
+      <h2 className="mt-4 text-2xl font-semibold text-brand-900">
+        {title ??
+          tr(
+            "Vincula y conecta tu cuenta Stellar para firmar",
+            "Link and connect your Stellar account to sign",
+          )}
+      </h2>
+
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        {googleUser
           ? tr(
-              "Con correo no necesitas instalar nada: te enviamos un código y creamos tu cuenta en Stellar. Si ya usas ",
-              "With email you don't need to install anything: we send you a code and create your Stellar account. If you already use ",
+              `Identificamos tu sesión de Google (${googleUser.email}). Conecta tu cuenta Stellar (Blux o Varial) para vincularla y firmar transacciones en la red.`,
+              `We found your Google session (${googleUser.email}). Connect your Stellar account (Blux or Varial) to link it and sign transactions on-chain.`,
             )
-          : tr("Usamos ", "We use ")}
-        <a className="font-semibold text-brand-700 hover:underline" href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer">
-          Varial
-        </a>
-        {allowEmail
-          ? tr(" (antes Freighter), puedes conectarla.", " (formerly Freighter), you can connect it.")
-          : tr(" (antes Freighter), la wallet de Stellar para el navegador. Recuerda ponerla en la red Testnet.", " (formerly Freighter), the Stellar browser wallet. Remember to set it to Testnet.")}
+          : (text ??
+            tr(
+              "Conecta una dirección Stellar (G...) mediante Blux o Varial para firmar operaciones en BITAJÓN.",
+              "Connect a Stellar address (G...) via Blux or Varial to sign operations in BITAJÓN.",
+            ))}
       </p>
+
+      {googleUser?.linkedAddress && (
+        <p className="mt-3 rounded-xl bg-sand px-3 py-2 font-mono text-xs text-slate-700">
+          {tr("Última dirección vinculada:", "Last linked address:")}{" "}
+          {googleUser.linkedAddress}
+        </p>
+      )}
+
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <button type="button" onClick={openAuth} className="btn-primary !px-6 !py-3">
+          <ShieldCheck className="h-4 w-4" />
+          {tr(
+            "Conectar cuenta Stellar para firmar",
+            "Connect Stellar account to sign",
+          )}
+        </button>
+      </div>
     </div>
   );
 }
