@@ -11,40 +11,68 @@ import {
 } from "@stellar/freighter-api";
 import type { SignTransaction } from "@stellar/stellar-sdk/contract";
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { BLUX_APP_ID, FRIENDBOT_URL, IS_TESTNET, NETWORK_PASSPHRASE } from "../config";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { toast } from "sonner";
+import {
+  BLUX_APP_ID,
+  FRIENDBOT_URL,
+  IS_TESTNET,
+  NETWORK_PASSPHRASE,
+} from "../config";
 import { getLang, tr } from "./i18n";
 import { listAdmins } from "./offchain";
 
-/*
- * Dos formas de entrar:
- *  - "wallet": Varial (antes Freighter). Es la de los donantes y de los admins.
- *  - "email":  cuenta con correo de Blux. Pensada para fundaciones que no manejan una wallet.
- *              Blux crea y custodia la cuenta Stellar; la app firma con ella igual que con Varial.
- * El resto de la app solo ve `address`, `signTransaction` y `signMessage`.
- */
 export type LoginMode = "wallet" | "email";
 
+export type GoogleUser = {
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
+  linkedAddress?: string | null;
+};
+
 const STORAGE_KEY = "bitajon.wallet.connected";
+const GOOGLE_USER_KEY = "bitajon.google.user";
 
 type WalletState = {
   /** Dirección G… activa, o null. */
   address: string | null;
   mode: LoginMode | null;
-  /** Correo con el que entró (solo cuentas de correo). */
+  /** Correo con el que entró (solo cuentas de correo o sesión de Google). */
   email: string | null;
+  /** Sesión de Google activa (si el usuario inició sesión con Google). */
+  googleUser: GoogleUser | null;
   /** true si la extensión Varial/Freighter está instalada. */
   installed: boolean | null;
   /** true si la wallet está en una red distinta a la de la app. */
   wrongNetwork: boolean;
   connecting: boolean;
   isAdmin: boolean;
+  /** Dispara directamente el inicio de sesión sin modal intermedio. */
+  openAuth: () => void;
   /** Conecta Varial como cuenta activa. */
   connect: () => Promise<void>;
-  /** Abre el login con correo (Blux). */
+  /** Abre el login con correo/Google/wallets/passkey (Blux). */
   loginWithEmail: () => Promise<void>;
+  /** Inicia sesión con Google (o cae en login de Blux si no hay client ID configurado). */
+  loginWithGoogle: () => void;
+  /** Procesa un id_token de Google y persiste el usuario. */
+  completeGoogleLogin: (idToken: string) => GoogleUser | null;
+  /** Vincula el usuario de Google a una dirección Stellar (G...). */
+  linkGoogleToAddress: (stellarAddress?: string | null) => GoogleUser | null;
+  /** Cierra la sesión de Google. */
+  logoutGoogle: () => void;
   disconnect: () => void;
-  /** Pide a Varial su dirección sin cambiar la sesión activa (para vincular la wallet de retiro). */
+  /** Pide a Varial su dirección sin cambiar la sesión activa. */
   pickWalletAddress: () => Promise<string>;
   /** Firmador compatible con los clientes de contrato del SDK. */
   signTransaction: SignTransaction;
@@ -61,6 +89,7 @@ function readFlag(): boolean {
     return false;
   }
 }
+
 function writeFlag(on: boolean) {
   try {
     if (on) localStorage.setItem(STORAGE_KEY, "1");
@@ -70,10 +99,44 @@ function writeFlag(on: boolean) {
   }
 }
 
+function readGoogleUser(): GoogleUser | null {
+  try {
+    const raw = localStorage.getItem(GOOGLE_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GoogleUser;
+    return parsed?.email ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGoogleUser(user: GoogleUser | null) {
+  try {
+    if (user) localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(GOOGLE_USER_KEY);
+  } catch {
+    /* sin almacenamiento disponible */
+  }
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const normalized = part.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(normalized);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (!error) return "";
   if (typeof error === "string") return error;
-  if (typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);
+  if (typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
   return String(error);
 }
 
@@ -91,52 +154,74 @@ function pickString(v: unknown, keys: string[]): string | null {
   return null;
 }
 
+/** Solicita XLM de prueba en testnet usando Friendbot. */
+export async function fundWithFriendbot(address: string): Promise<void> {
+  if (!IS_TESTNET) return;
+  const res = await fetch(`${FRIENDBOT_URL}/?addr=${encodeURIComponent(address)}`);
+  if (!res.ok) {
+    throw new Error(
+      tr(
+        "No se pudieron obtener XLM de prueba en testnet.",
+        "Could not fetch testnet XLM from Friendbot.",
+      ),
+    );
+  }
+}
+
 /** En testnet, una cuenta nueva necesita XLM de prueba para existir y pagar comisiones. */
 async function ensureTestnetFunds(address: string) {
   if (!IS_TESTNET) return;
   try {
     const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`);
-    if (res.status === 404) await fetch(`${FRIENDBOT_URL}/?addr=${address}`);
+    if (res.status === 404) await fundWithFriendbot(address);
   } catch {
     /* sin red: se intentará al firmar */
   }
 }
 
-/** Raíz: Blux por fuera (trae su propio QueryClient) y la wallet de BITAJÓN por dentro. */
-export function WalletRoot({ children }: { children: ReactNode }) {
-  const config = useMemo(
-    () => ({
-      appId: BLUX_APP_ID,
-      appName: "BITAJÓN",
-      networks: [IS_TESTNET ? networks.testnet : networks.mainnet],
-      defaultNetwork: IS_TESTNET ? networks.testnet : networks.mainnet,
-      loginMethods: ["email"],
-      isPersistent: true,
-      lang: getLang(),
-      explorer: "stellarexpert" as const,
-      appearance: {
-        accentColor: "#1f8a5b",
-        borderRadius: "16px",
-        fontFamily: "var(--font-sans)",
-        logo: "/brand/mark.png",
-      },
-    }),
-    [],
-  );
-  return <BluxProvider config={config}>{children}</BluxProvider>;
-}
-
 export function WalletProvider({ children }: { children: ReactNode }) {
   const blux = useBlux();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(() =>
+    readGoogleUser(),
+  );
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [wrongNetwork, setWrongNetwork] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const bluxAddress = blux.isAuthenticated ? (blux.user?.address ?? null) : null;
-  const mode: LoginMode | null = bluxAddress ? "email" : walletAddress ? "wallet" : null;
+  const mode: LoginMode | null = bluxAddress
+    ? "email"
+    : walletAddress
+      ? "wallet"
+      : null;
   const address = bluxAddress ?? walletAddress;
-  const email = bluxAddress ? (blux.user?.authValue ?? blux.user?.identifier ?? null) : null;
+  const email = bluxAddress
+    ? (blux.user?.authValue ?? blux.user?.identifier ?? googleUser?.email ?? null)
+    : (googleUser?.email ?? null);
+
+  const linkGoogleToAddress = useCallback(
+    (stellarAddress?: string | null): GoogleUser | null => {
+      const targetAddress = stellarAddress ?? address;
+      if (!googleUser || !targetAddress) return googleUser;
+      const updated: GoogleUser = {
+        ...googleUser,
+        linkedAddress: targetAddress,
+      };
+      setGoogleUser(updated);
+      writeGoogleUser(updated);
+      return updated;
+    },
+    [address, googleUser],
+  );
+
+  useEffect(() => {
+    if (googleUser && address && googleUser.linkedAddress !== address) {
+      const updated: GoogleUser = { ...googleUser, linkedAddress: address };
+      setGoogleUser(updated);
+      writeGoogleUser(updated);
+    }
+  }, [address, googleUser]);
 
   const checkNetwork = useCallback(async () => {
     try {
@@ -169,7 +254,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
-    // Si el usuario cambia de cuenta en la wallet, se actualiza al volver a la pestaña.
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -179,31 +263,55 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (bluxAddress) void ensureTestnetFunds(bluxAddress);
   }, [bluxAddress]);
 
-  const requestWallet = useCallback(async () => {
+  const requestWallet = useCallback(async (): Promise<string> => {
     const conn = await isConnected();
     if (!conn.isConnected) {
       setInstalled(false);
-      throw new Error(tr("Varial no está instalada en este navegador.", "Varial is not installed in this browser."));
+      throw new Error(
+        tr(
+          "Varial no está instalada en este navegador.",
+          "Varial is not installed in this browser.",
+        ),
+      );
     }
     setInstalled(true);
-    const res = await requestAccess();
-    if (res.error || !res.address) throw new Error(errorMessage(res.error) || tr("No se pudo conectar la wallet.", "Could not connect the wallet."));
-    return res.address;
+    const allowed = await isAllowed();
+    if (!allowed?.isAllowed) {
+      const access = await requestAccess();
+      if (access?.error) {
+        throw new Error(
+          errorMessage(access.error) ||
+            tr("Se canceló el acceso a la wallet.", "Wallet access was cancelled."),
+        );
+      }
+    }
+    const addrRes = await getAddress();
+    if (addrRes?.error || !addrRes?.address) {
+      throw new Error(
+        errorMessage(addrRes?.error) ||
+          tr("No se pudo conectar la wallet.", "Could not connect the wallet."),
+      );
+    }
+    return addrRes.address;
   }, []);
 
   const connect = useCallback(async () => {
     setConnecting(true);
     try {
       const a = await requestWallet();
-      // Solo una sesión activa a la vez.
       if (blux.isAuthenticated) blux.logout();
       setWalletAddress(a);
       writeFlag(true);
       await checkNetwork();
+      if (googleUser) {
+        const updated: GoogleUser = { ...googleUser, linkedAddress: a };
+        setGoogleUser(updated);
+        writeGoogleUser(updated);
+      }
     } finally {
       setConnecting(false);
     }
-  }, [blux, checkNetwork, requestWallet]);
+  }, [blux, checkNetwork, googleUser, requestWallet]);
 
   const loginWithEmail = useCallback(async () => {
     setConnecting(true);
@@ -213,11 +321,77 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         writeFlag(false);
         setWalletAddress(null);
         await ensureTestnetFunds(user.address);
+        if (googleUser) {
+          const updated: GoogleUser = {
+            ...googleUser,
+            linkedAddress: user.address,
+          };
+          setGoogleUser(updated);
+          writeGoogleUser(updated);
+        }
       }
     } finally {
       setConnecting(false);
     }
-  }, [blux]);
+  }, [blux, googleUser]);
+
+  const openAuth = useCallback(() => {
+    void loginWithEmail();
+  }, [loginWithEmail]);
+
+  const completeGoogleLogin = useCallback(
+    (idToken: string): GoogleUser | null => {
+      const payload = decodeJwtPayload(idToken);
+      const sub = typeof payload?.sub === "string" ? payload.sub : "";
+      const mail = typeof payload?.email === "string" ? payload.email : "";
+      const name =
+        typeof payload?.name === "string" && payload.name.trim()
+          ? payload.name.trim()
+          : mail;
+      const picture =
+        typeof payload?.picture === "string" ? payload.picture : undefined;
+      if (!sub || !mail) return null;
+      const nextUser: GoogleUser = {
+        sub,
+        email: mail,
+        name,
+        picture,
+        linkedAddress: address ?? googleUser?.linkedAddress ?? null,
+      };
+      setGoogleUser(nextUser);
+      writeGoogleUser(nextUser);
+      return nextUser;
+    },
+    [address, googleUser?.linkedAddress],
+  );
+
+  const loginWithGoogle = useCallback(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+    if (!clientId) {
+      toast.info(
+        tr(
+          "Configura VITE_GOOGLE_CLIENT_ID o usa el acceso de Blux para continuar.",
+          "Configure VITE_GOOGLE_CLIENT_ID or use Blux login to continue.",
+        ),
+      );
+      void loginWithEmail();
+      return;
+    }
+    const nonce = crypto.randomUUID();
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("response_type", "id_token");
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("nonce", nonce);
+    window.location.assign(url.toString());
+  }, [loginWithEmail]);
+
+  const logoutGoogle = useCallback(() => {
+    setGoogleUser(null);
+    writeGoogleUser(null);
+  }, []);
 
   const disconnect = useCallback(() => {
     writeFlag(false);
@@ -230,16 +404,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const signTransaction = useCallback<SignTransaction>(
     async (xdr, opts) => {
       if (mode === "email") {
-        const res = await blux.signTransaction(xdr, { network: opts?.networkPassphrase ?? NETWORK_PASSPHRASE });
-        const signed = pickString(res, ["signedTxXdr", "signedXdr", "xdr", "signedTransaction"]);
-        if (!signed) throw new Error(tr("La cuenta de correo no devolvió la firma.", "The email account did not return a signature."));
+        const res = await blux.signTransaction(xdr, {
+          network: opts?.networkPassphrase ?? NETWORK_PASSPHRASE,
+        });
+        const signed = pickString(res, [
+          "signedTxXdr",
+          "signedXdr",
+          "xdr",
+          "signedTransaction",
+        ]);
+        if (!signed) {
+          throw new Error(
+            tr(
+              "La cuenta de correo no devolvió la firma.",
+              "The email account did not return a signature.",
+            ),
+          );
+        }
         return { signedTxXdr: signed, signerAddress: address ?? undefined };
       }
       const res = await freighterSign(xdr, {
         networkPassphrase: opts?.networkPassphrase ?? NETWORK_PASSPHRASE,
         address: opts?.address ?? address ?? undefined,
       });
-      if (res.error) throw new Error(errorMessage(res.error) || tr("La wallet rechazó la firma.", "The wallet rejected the signature."));
+      if (res.error) {
+        throw new Error(
+          errorMessage(res.error) ||
+            tr("La wallet rechazó la firma.", "The wallet rejected the signature."),
+        );
+      }
       return { signedTxXdr: res.signedTxXdr, signerAddress: res.signerAddress };
     },
     [address, blux, mode],
@@ -250,48 +443,132 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (mode === "email") {
         const res = await blux.signMessage(message);
         const sig = pickString(res, ["signedMessage", "signature", "signed"]);
-        if (!sig) throw new Error(tr("La cuenta de correo no devolvió la firma.", "The email account did not return a signature."));
+        if (!sig) {
+          throw new Error(
+            tr(
+              "La cuenta de correo no devolvió la firma.",
+              "The email account did not return a signature.",
+            ),
+          );
+        }
         return sig;
       }
-      const res = await freighterSignMessage(message, { networkPassphrase: NETWORK_PASSPHRASE, address: address ?? undefined });
-      if (res.error) throw new Error(errorMessage(res.error) || tr("La wallet rechazó la firma.", "The wallet rejected the signature."));
+      const res = await freighterSignMessage(message, {
+        networkPassphrase: NETWORK_PASSPHRASE,
+        address: address ?? undefined,
+      });
+      if (res.error) {
+        throw new Error(
+          errorMessage(res.error) ||
+            tr("La wallet rechazó la firma.", "The wallet rejected the signature."),
+        );
+      }
       const sig = res.signedMessage as unknown;
-      if (!sig) throw new Error(tr("La wallet no devolvió la firma.", "The wallet did not return a signature."));
+      if (!sig) {
+        throw new Error(
+          tr("La wallet no devolvió la firma.", "The wallet did not return a signature."),
+        );
+      }
       if (typeof sig === "string") return sig;
-      // Versiones anteriores devuelven un Buffer.
       return Buffer.from(sig as Uint8Array).toString("base64");
     },
     [address, blux, mode],
   );
 
-  // Admins: lista pública en Supabase; las acciones igual se validan en el servidor.
-  const admins = useQuery({ queryKey: ["admins"], queryFn: listAdmins, staleTime: 5 * 60_000 });
-  const isAdmin = Boolean(address && admins.data?.some((a) => a.address === address));
+  const admins = useQuery({
+    queryKey: ["admins"],
+    queryFn: listAdmins,
+    staleTime: 5 * 60_000,
+  });
+  const isAdmin = Boolean(
+    address && admins.data?.some((a) => a.address === address),
+  );
 
   const value = useMemo<WalletState>(
     () => ({
       address,
       mode,
       email,
+      googleUser,
       installed,
       wrongNetwork: mode === "wallet" && wrongNetwork,
       connecting,
       isAdmin,
+      openAuth,
       connect,
       loginWithEmail,
+      loginWithGoogle,
+      completeGoogleLogin,
+      linkGoogleToAddress,
+      logoutGoogle,
       disconnect,
       pickWalletAddress,
       signTransaction,
       signMessage,
     }),
-    [address, mode, email, installed, wrongNetwork, connecting, isAdmin, connect, loginWithEmail, disconnect, pickWalletAddress, signTransaction, signMessage],
+    [
+      address,
+      mode,
+      email,
+      googleUser,
+      installed,
+      wrongNetwork,
+      connecting,
+      isAdmin,
+      openAuth,
+      connect,
+      loginWithEmail,
+      loginWithGoogle,
+      completeGoogleLogin,
+      linkGoogleToAddress,
+      logoutGoogle,
+      disconnect,
+      pickWalletAddress,
+      signTransaction,
+      signMessage,
+    ],
   );
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+    </WalletContext.Provider>
+  );
+}
+
+/** Raíz: Blux por fuera y la wallet de BITAJÓN por dentro. */
+export function WalletRoot({ children }: { children: ReactNode }) {
+  const network = IS_TESTNET ? networks.testnet : networks.mainnet;
+  const config = useMemo(
+    () => ({
+      appId: BLUX_APP_ID,
+      appName: "BITAJÓN",
+      networks: [network],
+      defaultNetwork: network,
+      loginMethods: ["email", "google", "wallet", "passkey"] as const,
+      lang: getLang(),
+      explorer: "stellarexpert" as const,
+      appearance: {
+        accentColor: "#01417E",
+        borderRadius: "16px",
+        fontFamily: "var(--font-sans)",
+        logo: "/brand/mark.png",
+      },
+    }),
+    [network],
+  );
+
+  return (
+    <BluxProvider config={config as never}>
+      <WalletProvider>{children}</WalletProvider>
+    </BluxProvider>
+  );
 }
 
 export function useWallet(): WalletState {
   const ctx = useContext(WalletContext);
-  if (!ctx) throw new Error("useWallet debe usarse dentro de <WalletProvider>");
+  if (!ctx) {
+    throw new Error("useWallet debe usarse dentro de <WalletProvider>");
+  }
   return ctx;
 }
