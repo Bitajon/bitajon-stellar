@@ -41,8 +41,10 @@ export const MILESTONE_MIN = 1;
 export const MILESTONE_MAX = 90;
 export const MILESTONE_RECOMMENDED = 50;
 
-/* Blux: login con correo para las fundaciones (App ID público del panel de Blux). */
-export const BLUX_APP_ID = pick(env.VITE_BLUX_APP_ID, "uz6szcu7lig9vr4flovi");
+export const BLUX_APP_ID = pick(
+  env.APP_ID_KEY ?? env.VITE_BLUX_APP_ID,
+  "uz6szcu7lig9vr4flovi",
+);
 
 /* Supabase: imágenes, redes sociales, evidencia y RUT (fuera de la cadena). */
 export const SUPABASE_URL = pick(env.VITE_SUPABASE_URL, "https://vfvsdztgkndeundarbzw.supabase.co");
